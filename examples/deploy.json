@@ -1,0 +1,44 @@
+{
+    "Kind": "Deployment",
+    "apiVersion": "v1beta1",
+    "id": "demo",
+    "configId": "demo-config",
+    "strategy": {
+        "type": "customPod",
+        "customPod": {
+            "image": "127.0.0.1:5000/openshift/kube-deploy",
+        }
+    },
+    "controllerTemplate": {
+        "podTemplate": {
+            "desiredState": {
+                "manifest": {
+                    "containers": [
+                    {
+                        "image": "127.0.0.1:5000/openshift/centos-haproxy-simple-balancer",
+                        "name": "haproxy",
+                        "ports": [
+                        {
+                           "containerPort": 80,
+                           "protocol": "TCP"
+                        }
+                        ]
+                    }
+                    ],
+                    "id": "",
+                    "version": "v1beta1",
+                    "volumes": null
+                },
+                "restartpolicy": {}
+            },
+            "labels": {
+                "name": "myapp"
+            }
+        },
+        "replicaSelector": {
+            "name": "myapp"
+        },
+        "replicas": 1
+    }
+}
+

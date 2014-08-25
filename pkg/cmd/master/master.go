@@ -6,6 +6,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/apiserver"
 	kubeclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/controller"
@@ -26,6 +27,8 @@ import (
 	"github.com/google/cadvisor/client"
 	"github.com/spf13/cobra"
 
+	_ "github.com/openshift/origin/pkg/api"
+	_ "github.com/openshift/origin/pkg/api/v1beta1"
 	"github.com/openshift/origin/pkg/build"
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildregistry "github.com/openshift/origin/pkg/build/registry/build"
@@ -35,6 +38,9 @@ import (
 	"github.com/openshift/origin/pkg/build/webhook/github"
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
+	"github.com/openshift/origin/pkg/deploy"
+	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
+	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	"github.com/openshift/origin/pkg/image"
 	"github.com/openshift/origin/pkg/template"
 
@@ -131,6 +137,7 @@ func (c *config) startAllInOne() {
 	c.runScheduler()
 	c.runReplicationController()
 	c.runBuildController()
+	c.runDeploymentController()
 
 	select {}
 }
@@ -141,6 +148,7 @@ func (c *config) startMaster() {
 	c.runScheduler()
 	c.runReplicationController()
 	c.runBuildController()
+	c.runDeploymentController()
 
 	select {}
 }
@@ -173,6 +181,8 @@ func (c *config) runApiserver() {
 		"imageRepositories":       image.NewImageRepositoryStorage(imageRegistry),
 		"imageRepositoryMappings": image.NewImageRepositoryMappingStorage(imageRegistry, imageRegistry),
 		"templateConfigs":         template.NewStorage(),
+		"deployments":             deployregistry.NewStorage(deploy.NewEtcdRegistry(etcdClient)),
+		"deploymentConfigs":       deployconfigregistry.NewStorage(deploy.NewEtcdRegistry(etcdClient)),
 	}
 
 	osMux := http.NewServeMux()
@@ -322,6 +332,17 @@ func (c *config) runBuildController() {
 
 	buildController := build.NewBuildController(kubeClient, osClient, buildStrategies, dockerRegistry, 1200)
 	buildController.Run(10 * time.Second)
+}
+
+func (c *config) runDeploymentController() {
+	env := []api.EnvVar{
+		api.EnvVar{Name: "KUBERNETES_MASTER", Value: "http://" + c.ListenAddr},
+	}
+	kubeClient := c.getKubeClient()
+	osClient := c.getOsClient()
+
+	deployController := deploy.MakeDeploymentController(kubeClient, osClient, env)
+	deployController.Run(10 * time.Second)
 }
 
 func env(key string, defaultValue string) string {

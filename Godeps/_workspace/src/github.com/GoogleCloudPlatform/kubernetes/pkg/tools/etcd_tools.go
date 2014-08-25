@@ -22,6 +22,7 @@ import (
 	"reflect"
 
 	"github.com/coreos/go-etcd/etcd"
+	"github.com/golang/glog"
 )
 
 const (
@@ -227,7 +228,10 @@ func (h *EtcdHelper) SetObj(key string, obj interface{}) error {
 		return err
 	}
 	if h.ResourceVersioner != nil {
-		if version, err := h.ResourceVersioner.ResourceVersion(obj); err == nil && version != 0 {
+		version, err := h.ResourceVersioner.ResourceVersion(obj)
+		glog.Infof("updating key: %v version: %v err: %v", key, version, err)
+
+		if err == nil && version != 0 {
 			_, err = h.Client.CompareAndSwap(key, string(data), 0, "", version)
 			return err // err is shadowed!
 		}

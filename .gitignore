@@ -1,4 +1,5 @@
 /_output
+/images/deployer/kube-deploy/kube-deploy
 /third_party
 /*.etcd
 /.project
