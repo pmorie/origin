@@ -108,14 +108,37 @@ func okCustomPod() *api.CustomPodDeploymentStrategy {
 	}
 }
 
+func okControllerTemplate() kubeapi.ReplicationControllerState {
+	return kubeapi.ReplicationControllerState{
+		ReplicaSelector: okSelector(),
+		PodTemplate:     okPodTemplate(),
+	}
+}
+
+func okSelector() map[string]string {
+	return map[string]string{"a": "b"}
+}
+
+func okPodTemplate() kubeapi.PodTemplate {
+	return kubeapi.PodTemplate{
+		DesiredState: kubeapi.PodState{
+			Manifest: kubeapi.ContainerManifest{
+				Version: "v1beta1",
+			},
+		},
+		Labels: okSelector(),
+	}
+}
+
 func TestCreateRegistrySaveError(t *testing.T) {
 	mockRegistry := test.NewDeploymentRegistry()
 	mockRegistry.Err = fmt.Errorf("test error")
 	storage := REST{registry: mockRegistry}
 
 	channel, err := storage.Create(&api.Deployment{
-		JSONBase: kubeapi.JSONBase{ID: "foo"},
-		Strategy: okStrategy(),
+		JSONBase:           kubeapi.JSONBase{ID: "foo"},
+		Strategy:           okStrategy(),
+		ControllerTemplate: okControllerTemplate(),
 	})
 	if channel == nil {
 		t.Errorf("Expected nil channel, got %v", channel)
@@ -144,8 +167,9 @@ func TestCreateDeploymentOK(t *testing.T) {
 	storage := REST{registry: mockRegistry}
 
 	channel, err := storage.Create(&api.Deployment{
-		JSONBase: kubeapi.JSONBase{ID: "foo"},
-		Strategy: okStrategy(),
+		JSONBase:           kubeapi.JSONBase{ID: "foo"},
+		Strategy:           okStrategy(),
+		ControllerTemplate: okControllerTemplate(),
 	})
 	if channel == nil {
 		t.Errorf("Expected nil channel, got %v", channel)

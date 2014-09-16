@@ -27,11 +27,12 @@ type DeploymentTemplate struct {
 type DeploymentState string
 
 const (
-	DeploymentNew      DeploymentState = "new"
-	DeploymentPending  DeploymentState = "pending"
-	DeploymentRunning  DeploymentState = "running"
-	DeploymentComplete DeploymentState = "complete"
-	DeploymentFailed   DeploymentState = "failed"
+	DeploymentNew       DeploymentState = "new"
+	DeploymentPending   DeploymentState = "pending"
+	DeploymentRunning   DeploymentState = "running"
+	DeploymentComplete  DeploymentState = "complete"
+	DeploymentFailed    DeploymentState = "failed"
+	DeploymentCancelled DeploymentState = "cancelled"
 )
 
 // A Deployment represents a single unique realization of a DeploymentConfig.
@@ -41,20 +42,27 @@ type Deployment struct {
 	Strategy           DeploymentStrategy             `json:"strategy,omitempty" yaml:"strategy,omitempty"`
 	ControllerTemplate api.ReplicationControllerState `json:"controllerTemplate,omitempty" yaml:"controllerTemplate,omitempty"`
 	State              DeploymentState                `json:"state,omitempty" yaml:"state,omitempty"`
-	ConfigID           string                         `json:"configId,omitempty" yaml:"configId,omitempty"`
 }
 
-// DeploymentTriggerPolicy describes the possible triggers that result in a new Deployment.
+// DeploymentTriggerPolicy describes a policy for a single trigger that results in a new Deployment.
 type DeploymentTriggerPolicy struct {
-	Type DeploymentTriggerType `json:"type,omitempty" yaml:"type,omitempty"`
+	Type              DeploymentTriggerType               `json:"type,omitempty" yaml:"type,omitempty"`
+	Automatic         bool                                `json:"auto,omitempty" yaml:"auto,omitempty"`
+	ImageChangeParams *DeploymentTriggerImageChangeParams `json:"imageChangeParams,omitempty" yaml:"imageChangeParams,omitempty"`
+}
+
+type DeploymentTriggerImageChangeParams struct {
+	ContainerNames []string `json:"containerNames,omitempty" yaml:"containerNames,omitempty"`
+	RepositoryName string   `json:"repositoryName,omitempty" yaml:"repositoryName,omitempty"`
+	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`
 }
 
 type DeploymentTriggerType string
 
 const (
+	DeploymentTriggerManual         DeploymentTriggerType = "manual"
 	DeploymentTriggerOnImageChange  DeploymentTriggerType = "image-change"
 	DeploymentTriggerOnConfigChange DeploymentTriggerType = "config-change"
-	DeploymentTriggerManual         DeploymentTriggerType = "manual"
 )
 
 // DeploymentConfig represents a configuration for a single deployment of a replication controller:
@@ -62,10 +70,10 @@ const (
 // deployed state is.
 type DeploymentConfig struct {
 	api.JSONBase  `json:",inline" yaml:",inline"`
-	Labels        map[string]string              `json:"labels,omitempty" yaml:"labels,omitempty"`
-	TriggerPolicy DeploymentTriggerPolicy        `json:"triggerPolicy,omitempty" yaml:"triggerPolicy,omitempty"`
-	Template      DeploymentTemplate             `json:"template,omitempty" yaml:"template,omitempty"`
-	CurrentState  api.ReplicationControllerState `json:"currentState" yaml:"currentState,omitempty"`
+	Labels        map[string]string         `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Triggers      []DeploymentTriggerPolicy `json:"triggers,omitempty" yaml:"triggers,omitempty"`
+	Template      DeploymentTemplate        `json:"template,omitempty" yaml:"template,omitempty"`
+	LatestVersion int                       `json:"latestVersion,omitempty" yaml:"latestVersion,omitempty"`
 }
 
 // A DeploymentConfigList is a collection of deployment configs
