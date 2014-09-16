@@ -208,7 +208,10 @@ func NewCommandStartServer(name string) *cobra.Command {
 
 				osmaster.RunAssetServer()
 				osmaster.RunBuildController()
-				osmaster.RunDeploymentController()
+				osmaster.RunBasicDeploymentController()
+				osmaster.RunCustomPodDeploymentController()
+				osmaster.RunConfigChangeController()
+				osmaster.RunDeploymentImageChangeTriggerController()
 			}
 
 			if startNode {

@@ -3,27 +3,53 @@ package validation
 import (
 	"testing"
 
+	kubeapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/openshift/origin/pkg/deploy/api"
 )
 
 // Convenience methods
 
-func manualTrigger() api.DeploymentTriggerPolicy {
-	return api.DeploymentTriggerPolicy{
-		Type: api.DeploymentTriggerManual,
+func manualTrigger() []api.DeploymentTriggerPolicy {
+	return []api.DeploymentTriggerPolicy{
+		api.DeploymentTriggerPolicy{
+			Type: api.DeploymentTriggerManual,
+		},
 	}
 }
 
-func okTemplate() api.DeploymentTemplate {
+func okControllerTemplate() kubeapi.ReplicationControllerState {
+	return kubeapi.ReplicationControllerState{
+		ReplicaSelector: okSelector(),
+		PodTemplate:     okPodTemplate(),
+	}
+}
+
+func okSelector() map[string]string {
+	return map[string]string{"a": "b"}
+}
+
+func okPodTemplate() kubeapi.PodTemplate {
+	return kubeapi.PodTemplate{
+		DesiredState: kubeapi.PodState{
+			Manifest: kubeapi.ContainerManifest{
+				Version: "v1beta1",
+			},
+		},
+		Labels: okSelector(),
+	}
+}
+
+func okDeploymentTemplate() api.DeploymentTemplate {
 	return api.DeploymentTemplate{
-		Strategy: okStrategy(),
+		Strategy:           okStrategy(),
+		ControllerTemplate: okControllerTemplate(),
 	}
 }
 
 func okStrategy() api.DeploymentStrategy {
 	return api.DeploymentStrategy{
-		Type:      "customPod",
+		Type:      api.DeploymentStrategyTypeCustomPod,
 		CustomPod: okCustomPod(),
 	}
 }
@@ -38,7 +64,8 @@ func okCustomPod() *api.CustomPodDeploymentStrategy {
 
 func TestValidateDeploymentOK(t *testing.T) {
 	errs := ValidateDeployment(&api.Deployment{
-		Strategy: okStrategy(),
+		Strategy:           okStrategy(),
+		ControllerTemplate: okControllerTemplate(),
 	})
 	if len(errs) > 0 {
 		t.Errorf("Unxpected non-empty error list: %#v", errs)
@@ -56,6 +83,7 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 				Strategy: api.DeploymentStrategy{
 					CustomPod: okCustomPod(),
 				},
+				ControllerTemplate: okControllerTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
 			"Strategy.Type",
@@ -63,8 +91,9 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 		"missing Strategy.CustomPod": {
 			api.Deployment{
 				Strategy: api.DeploymentStrategy{
-					Type: "customPod",
+					Type: api.DeploymentStrategyTypeCustomPod,
 				},
+				ControllerTemplate: okControllerTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
 			"Strategy.CustomPod",
@@ -72,9 +101,10 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 		"missing Strategy.CustomPod.Image": {
 			api.Deployment{
 				Strategy: api.DeploymentStrategy{
-					Type:      "customPod",
+					Type:      api.DeploymentStrategyTypeCustomPod,
 					CustomPod: &api.CustomPodDeploymentStrategy{},
 				},
+				ControllerTemplate: okControllerTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
 			"Strategy.CustomPod.Image",
@@ -99,8 +129,8 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 
 func TestValidateDeploymentConfigOK(t *testing.T) {
 	errs := ValidateDeploymentConfig(&api.DeploymentConfig{
-		TriggerPolicy: manualTrigger(),
-		Template:      okTemplate(),
+		Triggers: manualTrigger(),
+		Template: okDeploymentTemplate(),
 	})
 
 	if len(errs) > 0 {
@@ -114,18 +144,58 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 		T errors.ValidationErrorType
 		F string
 	}{
-		"missing TriggerPolicy.Type": {
-			api.DeploymentConfig{Template: okTemplate()},
+		"missing Trigger.Type": {
+			api.DeploymentConfig{
+				Triggers: []api.DeploymentTriggerPolicy{
+					{
+						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
+							ContainerNames: []string{"foo"},
+						},
+					},
+				},
+				Template: okDeploymentTemplate(),
+			},
 			errors.ValidationErrorTypeRequired,
-			"TriggerPolicy.Type",
+			"Triggers[0].Type",
+		},
+		"missing Trigger ImageChangeParams.RepositoryName": {
+			api.DeploymentConfig{
+				Triggers: []api.DeploymentTriggerPolicy{
+					{
+						Type: api.DeploymentTriggerOnImageChange,
+						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
+							ContainerNames: []string{"foo"},
+						},
+					},
+				},
+				Template: okDeploymentTemplate(),
+			},
+			errors.ValidationErrorTypeRequired,
+			"Triggers[0].ImageChangeParams.RepositoryName",
+		},
+		"missing Trigger ImageChangeParams.ContainerNames": {
+			api.DeploymentConfig{
+				Triggers: []api.DeploymentTriggerPolicy{
+					{
+						Type: api.DeploymentTriggerOnImageChange,
+						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
+							RepositoryName: "foo",
+						},
+					},
+				},
+				Template: okDeploymentTemplate(),
+			},
+			errors.ValidationErrorTypeRequired,
+			"Triggers[0].ImageChangeParams.ContainerNames",
 		},
 		"missing Strategy.Type": {
 			api.DeploymentConfig{
-				TriggerPolicy: manualTrigger(),
+				Triggers: manualTrigger(),
 				Template: api.DeploymentTemplate{
 					Strategy: api.DeploymentStrategy{
 						CustomPod: okCustomPod(),
 					},
+					ControllerTemplate: okControllerTemplate(),
 				},
 			},
 			errors.ValidationErrorTypeRequired,
@@ -133,11 +203,12 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 		},
 		"missing Strategy.CustomPod": {
 			api.DeploymentConfig{
-				TriggerPolicy: manualTrigger(),
+				Triggers: manualTrigger(),
 				Template: api.DeploymentTemplate{
 					Strategy: api.DeploymentStrategy{
-						Type: "customPod",
+						Type: api.DeploymentStrategyTypeCustomPod,
 					},
+					ControllerTemplate: okControllerTemplate(),
 				},
 			},
 			errors.ValidationErrorTypeRequired,
@@ -145,12 +216,13 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 		},
 		"missing Template.Strategy.CustomPod.Image": {
 			api.DeploymentConfig{
-				TriggerPolicy: manualTrigger(),
+				Triggers: manualTrigger(),
 				Template: api.DeploymentTemplate{
 					Strategy: api.DeploymentStrategy{
-						Type:      "customPod",
+						Type:      api.DeploymentStrategyTypeCustomPod,
 						CustomPod: &api.CustomPodDeploymentStrategy{},
 					},
+					ControllerTemplate: okControllerTemplate(),
 				},
 			},
 			errors.ValidationErrorTypeRequired,
