@@ -1,0 +1,193 @@
+package controller
+
+import (
+	"time"
+
+	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
+	"github.com/golang/glog"
+	osclient "github.com/openshift/origin/pkg/client"
+	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployutil "github.com/openshift/origin/pkg/deploy/util"
+)
+
+// A DeploymentConfigController is responsible for implementing the triggers registered by DeploymentConfigs
+// TODO: needs cache of some kind
+type DeploymentConfigController struct {
+	osClient    osclient.Interface
+	configCache deploymentConfigCache
+	configWatch watch.Interface
+	shutdown    chan struct{}
+}
+
+// NewDeploymentConfigController creates a new DeploymentConfigController.
+func NewDeploymentConfigController(osClient osclient.Interface) *DeploymentConfigController {
+	return &DeploymentConfigController{
+		osClient:    osClient,
+		configCache: newDeploymentConfigCache(),
+	}
+}
+
+func (c *DeploymentConfigController) Run(period time.Duration) {
+	go util.Forever(func() { c.SyncDeploymentConfigs() }, period)
+}
+
+func (c *DeploymentConfigController) Shutdown() {
+	close(c.shutdown)
+}
+
+func (c *DeploymentConfigController) SyncDeploymentConfigs() {
+	ctx := kapi.NewContext()
+	glog.Info("Bootstrapping deploymentConfig controller")
+
+	c.shutdown = make(chan struct{})
+
+	deploymentConfigs, err := c.osClient.ListDeploymentConfigs(ctx, labels.Everything())
+	if err != nil {
+		glog.Errorf("Bootstrap error: %v (%#v)", err, err)
+		return
+	}
+
+	glog.Info("Determine whether to deploy deploymentConfigs")
+	for _, config := range deploymentConfigs.Items {
+		c.handle(ctx, &config)
+	}
+
+	err = c.subscribeToDeploymentConfigs(ctx)
+	if err != nil {
+		glog.Errorf("error subscribing to deploymentConfigs: %v", err)
+		return
+	}
+
+	go c.watchDeploymentConfigs(ctx)
+
+	<-c.shutdown
+}
+
+// TODO: reduce code duplication between trigger and config controllers
+func (c *DeploymentConfigController) latestDeploymentForConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
+	latestDeploymentId := deployutil.LatestDeploymentIDForConfig(config)
+	deployment, err := c.osClient.GetDeployment(ctx, latestDeploymentId)
+	if err != nil {
+		// TODO: probably some error / race handling to do here
+		return nil, err
+	}
+
+	return deployment, nil
+}
+
+func (c *DeploymentConfigController) handle(ctx kapi.Context, config *deployapi.DeploymentConfig) error {
+	deploy, err := c.shouldDeploy(ctx, config)
+	if err != nil {
+		// TODO: better error handling
+		glog.Errorf("Error determining whether to redeploy deploymentConfig %v: %#v", config.ID, err)
+		return err
+	}
+
+	if !deploy {
+		glog.Infof("Won't deploy from config %s", config.ID)
+		return nil
+	}
+
+	err = c.deploy(ctx, config)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *DeploymentConfigController) shouldDeploy(ctx kapi.Context, config *deployapi.DeploymentConfig) (bool, error) {
+	if config.LatestVersion == 0 {
+		glog.Infof("Shouldn't deploy config %s with LatestVersion=0", config.ID)
+		return false, nil
+	}
+
+	deployment, err := c.latestDeploymentForConfig(ctx, config)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			glog.Infof("Should deploy config %s because there's no latest deployment", config.ID)
+			return true, nil
+		} else {
+			glog.Infof("Shouldn't deploy config %s because of an error looking up latest deployment", config.ID)
+			return false, err
+		}
+	}
+
+	return !deployutil.PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
+}
+
+func (c *DeploymentConfigController) deploy(ctx kapi.Context, config *deployapi.DeploymentConfig) error {
+	labels := make(map[string]string)
+	for k, v := range config.Labels {
+		labels[k] = v
+	}
+	labels[deployapi.DeploymentConfigIDLabel] = config.ID
+
+	deployment := &deployapi.Deployment{
+		JSONBase: kapi.JSONBase{
+			ID: deployutil.LatestDeploymentIDForConfig(config),
+		},
+		Labels:             labels,
+		Strategy:           config.Template.Strategy,
+		ControllerTemplate: config.Template.ControllerTemplate,
+	}
+
+	glog.Infof("Creating new deployment from config %s", config.ID)
+	_, err := c.osClient.CreateDeployment(ctx, deployment)
+
+	return err
+}
+
+func (c *DeploymentConfigController) subscribeToDeploymentConfigs(ctx kapi.Context) error {
+	glog.Info("Subscribing to deployment configs")
+	watch, err := c.osClient.WatchDeploymentConfigs(ctx, labels.Everything(), labels.Everything(), 0)
+	if err == nil {
+		c.configWatch = watch
+	}
+	return err
+}
+
+func (c *DeploymentConfigController) watchDeploymentConfigs(ctx kapi.Context) {
+	configChan := c.configWatch.ResultChan()
+
+	for {
+		select {
+		case <-c.shutdown:
+			return
+		case configEvent, open := <-configChan:
+			if !open {
+				// watchChannel has been closed, or something else went
+				// wrong with our etcd watch call. Let the util.Forever()
+				// that called us call us again.
+				return
+			}
+
+			config, ok := configEvent.Object.(*deployapi.DeploymentConfig)
+			if !ok {
+				glog.Errorf("Received unexpected object during deploymentConfig watch: %v", configEvent)
+				continue
+			}
+
+			if configEvent.Type == watch.Deleted {
+				c.configCache.delete(config)
+				glog.Infof("Ignoring delete for config %v", config.ID)
+				continue
+			}
+
+			versionChanged := c.configCache.refresh(config)
+			if !versionChanged {
+				glog.Infof("Ignoring deploymentConfig watch for ID: %v because LatestVersion didn't change:", config.ID)
+				continue
+			}
+
+			glog.Infof("Received deploymentConfig watch for ID %v", config.ID)
+			if err := c.handle(ctx, config); err != nil {
+				glog.Errorf("Error during watch handling of config ID %s: %v", config.ID, err)
+			}
+		}
+	}
+}
