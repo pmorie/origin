@@ -3,8 +3,10 @@ package etcd
 import (
 	etcderr "github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors/etcd"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/tools"
-
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
+	"github.com/golang/glog"
 	"github.com/openshift/origin/pkg/deploy/api"
 )
 
@@ -88,6 +90,18 @@ func (r *Etcd) ListDeploymentConfigs(selector labels.Selector) (*api.DeploymentC
 
 	deploymentConfigs.Items = filtered
 	return &deploymentConfigs, err
+}
+
+// WatchDeploymentConfigs begins watching for new, changed, or deleted DeploymentConfigs.
+func (r *Etcd) WatchDeploymentConfigs(resourceVersion uint64, filter func(repo *api.DeploymentConfig) bool) (watch.Interface, error) {
+	return r.WatchList("/deploymentConfigs", resourceVersion, func(obj runtime.Object) bool {
+		config, ok := obj.(*api.DeploymentConfig)
+		if !ok {
+			glog.Errorf("Unexpected object during deploymentConfig watch: %#v", obj)
+			return false
+		}
+		return filter(config)
+	})
 }
 
 func makeDeploymentConfigKey(id string) string {
