@@ -65,10 +65,12 @@ type ImageRepositoryMappingInterface interface {
 // DeploymentConfigInterface contains methods for working with DeploymentConfigs
 type DeploymentConfigInterface interface {
 	ListDeploymentConfigs(selector labels.Selector) (*deployapi.DeploymentConfigList, error)
+	WatchDeploymentConfigs(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error)
 	GetDeploymentConfig(id string) (*deployapi.DeploymentConfig, error)
 	CreateDeploymentConfig(*deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 	UpdateDeploymentConfig(*deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 	DeleteDeploymentConfig(string) error
+	GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error)
 }
 
 // DeploymentInterface contains methods for working with Deployments
@@ -78,6 +80,7 @@ type DeploymentInterface interface {
 	CreateDeployment(*deployapi.Deployment) (*deployapi.Deployment, error)
 	UpdateDeployment(*deployapi.Deployment) (*deployapi.Deployment, error)
 	DeleteDeployment(string) error
+	WatchDeployments(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error)
 }
 
 // RouteInterface exposes methods on Route resources
@@ -256,6 +259,16 @@ func (c *Client) ListDeploymentConfigs(selector labels.Selector) (result *deploy
 	return
 }
 
+func (c *Client) WatchDeploymentConfigs(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	return c.Get().
+		Path("watch").
+		Path("deploymentConfigs").
+		UintParam("resourceVersion", resourceVersion).
+		SelectorParam("labels", label).
+		SelectorParam("fields", field).
+		Watch()
+}
+
 // GetDeploymentConfig returns information about a particular deploymentConfig
 func (c *Client) GetDeploymentConfig(id string) (result *deployapi.DeploymentConfig, err error) {
 	result = &deployapi.DeploymentConfig{}
@@ -280,6 +293,13 @@ func (c *Client) UpdateDeploymentConfig(deploymentConfig *deployapi.DeploymentCo
 // DeleteDeploymentConfig deletes an existing deploymentConfig.
 func (c *Client) DeleteDeploymentConfig(id string) error {
 	return c.Delete().Path("deploymentConfigs").Path(id).Do().Error()
+}
+
+// GenerateDeploymentConfig generates a new deploymentConfig for the given ID.
+func (c *Client) GenerateDeploymentConfig(id string) (result *deployapi.DeploymentConfig, err error) {
+	result = &deployapi.DeploymentConfig{}
+	err = c.Get().Path("genDeploymentConfigs").Path(id).Do().Into(result)
+	return
 }
 
 // ListDeployments takes a selector, and returns the list of deployments that match that selector
@@ -313,6 +333,17 @@ func (c *Client) UpdateDeployment(deployment *deployapi.Deployment) (result *dep
 // DeleteDeployment deletes an existing replication deployment.
 func (c *Client) DeleteDeployment(id string) error {
 	return c.Delete().Path("deployments").Path(id).Do().Error()
+}
+
+// WatchDeployments returns a watch.Interface that watches the requested deployments.
+func (c *Client) WatchDeployments(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	return c.Get().
+		Path("watch").
+		Path("deployments").
+		UintParam("resourceVersion", resourceVersion).
+		SelectorParam("labels", label).
+		SelectorParam("fields", field).
+		Watch()
 }
 
 // ListRoutes takes a selector, and returns the list of routes that match that selector
