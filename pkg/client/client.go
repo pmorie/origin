@@ -66,6 +66,7 @@ type ImageRepositoryMappingInterface interface {
 // DeploymentConfigInterface contains methods for working with DeploymentConfigs
 type DeploymentConfigInterface interface {
 	ListDeploymentConfigs(selector labels.Selector) (*deployapi.DeploymentConfigList, error)
+	WatchDeploymentConfigs(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error)
 	GetDeploymentConfig(id string) (*deployapi.DeploymentConfig, error)
 	CreateDeploymentConfig(*deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 	UpdateDeploymentConfig(*deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
@@ -235,6 +236,16 @@ func (c *Client) ListDeploymentConfigs(selector labels.Selector) (result *deploy
 	result = &deployapi.DeploymentConfigList{}
 	err = c.Get().Path("deploymentConfigs").SelectorParam("labels", selector).Do().Into(result)
 	return
+}
+
+func (c *Client) WatchDeploymentConfigs(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	return c.Get().
+		Path("watch").
+		Path("deploymentConfigs").
+		UintParam("resourceVersion", resourceVersion).
+		SelectorParam("labels", label).
+		SelectorParam("fields", field).
+		Watch()
 }
 
 // GetDeploymentConfig returns information about a particular deploymentConfig
