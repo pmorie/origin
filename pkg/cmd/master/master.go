@@ -45,7 +45,8 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
-	"github.com/openshift/origin/pkg/deploy"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
+	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -181,6 +182,8 @@ func (c *config) startAllInOne() {
 	c.runReplicationController()
 	c.runBuildController()
 	c.runDeploymentController()
+	c.runDeploymentConfigController()
+	c.runDeploymentTriggerController()
 
 	select {}
 }
@@ -192,6 +195,8 @@ func (c *config) startMaster() {
 	c.runReplicationController()
 	c.runBuildController()
 	c.runDeploymentController()
+	c.runDeploymentConfigController()
+	c.runDeploymentTriggerController()
 
 	select {}
 }
@@ -224,23 +229,25 @@ func (c *config) runApiserver() {
 		glog.Errorf("Error setting up Kubernetes server storage: %v", err)
 	}
 
-	buildRegistry := buildetcd.New(etcdHelper)
-	imageRegistry := imageetcd.New(etcdHelper)
+	buildEtcd := buildetcd.New(etcdHelper)
+	imageEtcd := imageetcd.New(etcdHelper)
 	deployEtcd := deployetcd.New(etcdHelper)
 	routeEtcd := routeetcd.New(etcdHelper)
+	deployConfigGen := deploygen.NewDeploymentConfigGenerator(deployEtcd, deployEtcd, imageEtcd)
 
 	// initialize OpenShift API
 	storage := map[string]apiserver.RESTStorage{
-		"builds":                  buildregistry.NewREST(buildRegistry),
-		"buildConfigs":            buildconfigregistry.NewREST(buildRegistry),
-		"buildLogs":               buildlogregistry.NewREST(buildRegistry, kubeClient, proxyPrefix),
-		"images":                  image.NewREST(imageRegistry),
-		"imageRepositories":       imagerepository.NewREST(imageRegistry),
-		"imageRepositoryMappings": imagerepositorymapping.NewREST(imageRegistry, imageRegistry),
-		"deployments":             deployregistry.NewREST(deployEtcd),
-		"deploymentConfigs":       deployconfigregistry.NewREST(deployEtcd),
-		"templateConfigs":         template.NewStorage(),
-		"routes":                  routeregistry.NewREST(routeEtcd),
+		"builds":                    buildregistry.NewREST(buildEtcd),
+		"buildConfigs":              buildconfigregistry.NewREST(buildEtcd),
+		"buildLogs":                 buildlogregistry.NewREST(buildEtcd, kubeClient, proxyPrefix),
+		"images":                    image.NewREST(imageEtcd),
+		"imageRepositories":         imagerepository.NewREST(imageEtcd),
+		"imageRepositoryMappings":   imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
+		"deployments":               deployregistry.NewREST(deployEtcd),
+		"deploymentConfigs":         deployconfigregistry.NewREST(deployEtcd),
+		"generateDeploymentConfigs": deploygen.NewREST(deployConfigGen, v1beta1.Codec),
+		"templateConfigs":           template.NewStorage(),
+		"routes":                    routeregistry.NewREST(routeEtcd),
 	}
 
 	osMux := http.NewServeMux()
@@ -449,8 +456,18 @@ func (c *config) runDeploymentController() {
 	kubeClient := c.getKubeClient()
 	osClient := c.getOsClient()
 
-	deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
+	deployController := deploycontroller.NewDeploymentController(kubeClient, osClient, env)
 	deployController.Run(10 * time.Second)
+}
+
+func (c *config) runDeploymentConfigController() {
+	deployConfigController := deploycontroller.NewDeploymentConfigController(c.getOsClient())
+	deployConfigController.Run(30 * time.Second)
+}
+
+func (c *config) runDeploymentTriggerController() {
+	deployTriggerController := deploycontroller.NewDeploymentTriggerController(c.getOsClient())
+	deployTriggerController.Run(30 * time.Second)
 }
 
 func env(key string, defaultValue string) string {
