@@ -64,7 +64,7 @@ func deployTarget(client *kubeclient.Client, osClient osclient.Interface) {
 	selector, _ := labels.ParseSelector("deployment=" + deployment.ConfigID)
 	replicationControllers, err := client.ListReplicationControllers(selector)
 	if err != nil {
-		glog.Fatalf("Unable to get list of replication controllers %v\n", err)
+		glog.Fatalf("Unable to get list of replication controllers: %v\n", err)
 		return
 	}
 
@@ -77,7 +77,7 @@ func deployTarget(client *kubeclient.Client, osClient osclient.Interface) {
 	}
 	controller.DesiredState.PodTemplate.Labels["deployment"] = deployment.ConfigID
 
-	glog.Info("Creating replication controller: ")
+	glog.Info("Creating replication controller")
 	obj, _ := yaml.Marshal(controller)
 	glog.Info(string(obj))
 
@@ -90,7 +90,7 @@ func deployTarget(client *kubeclient.Client, osClient osclient.Interface) {
 
 	// For this simple deploy, remove previous replication controllers
 	for _, rc := range replicationControllers.Items {
-		glog.Info("Stopping replication controller: ")
+		glog.Infof("Stopping replication controller: %v", rc.ID)
 		obj, _ := yaml.Marshal(rc)
 		glog.Info(string(obj))
 		rcObj, err1 := client.GetReplicationController(rc.ID)

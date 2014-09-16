@@ -35,11 +35,25 @@ func validateDeploymentStrategy(strategy *deployapi.DeploymentStrategy) errors.E
 	return result
 }
 
-func validateTriggerPolicy(policy *deployapi.DeploymentTriggerPolicy) errors.ErrorList {
+func validateTrigger(trigger *deployapi.DeploymentTriggerPolicy) errors.ErrorList {
 	result := errors.ErrorList{}
 
-	if len(policy.Type) == 0 {
+	if len(trigger.Type) == 0 {
 		result = append(result, errors.NewFieldRequired("Type", ""))
+	}
+
+	if trigger.Type == deployapi.DeploymentTriggerOnImageChange {
+		if trigger.ImageChangeParams == nil {
+			result = append(result, errors.NewFieldRequired("ImageChangeParams", nil))
+		} else {
+			if len(trigger.ImageChangeParams.RepositoryName) == 0 {
+				result = append(result, errors.NewFieldRequired("ImageChangeParams.RepositoryName", ""))
+			}
+
+			if len(trigger.ImageChangeParams.ImageName) == 0 {
+				result = append(result, errors.NewFieldRequired("ImageChangeParams.ImageName", ""))
+			}
+		}
 	}
 
 	return result
@@ -47,7 +61,11 @@ func validateTriggerPolicy(policy *deployapi.DeploymentTriggerPolicy) errors.Err
 
 func ValidateDeploymentConfig(config *deployapi.DeploymentConfig) errors.ErrorList {
 	result := errors.ErrorList{}
-	result = append(result, validateTriggerPolicy(&config.TriggerPolicy).Prefix("TriggerPolicy")...)
+
+	for i, _ := range config.Triggers {
+		result = append(result, validateTrigger(&config.Triggers[i]).Prefix("Triggers["+string(i)+"]")...)
+	}
+
 	result = append(result, validateDeploymentStrategy(&config.Template.Strategy).Prefix("Template.Strategy")...)
 
 	// TODO: validate ReplicationControllerState

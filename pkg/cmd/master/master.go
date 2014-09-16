@@ -172,6 +172,7 @@ func (c *config) startAllInOne() {
 	c.runReplicationController()
 	c.runBuildController()
 	c.runDeploymentController()
+	c.runDeploymentConfigController()
 
 	select {}
 }
@@ -183,6 +184,7 @@ func (c *config) startMaster() {
 	c.runReplicationController()
 	c.runBuildController()
 	c.runDeploymentController()
+	c.runDeploymentConfigController()
 
 	select {}
 }
@@ -427,6 +429,13 @@ func (c *config) runDeploymentController() {
 
 	deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
 	deployController.Run(10 * time.Second)
+}
+
+func (c *config) runDeploymentConfigController() {
+	osClient := c.getOsClient()
+
+	deployConfigController := deploy.NewDeploymentConfigController(osClient)
+	deployConfigController.Run(30 * time.Second)
 }
 
 func env(key string, defaultValue string) string {
