@@ -129,6 +129,7 @@ var parser = kubecfg.NewParser(map[string]runtime.Object{
 	"config":                  &configapi.Config{},
 	"deployments":             &deployapi.Deployment{},
 	"deploymentConfigs":       &deployapi.DeploymentConfig{},
+	"genDeploymentConfigs":    &deployapi.DeploymentConfig{},
 	"routes":                  &routeapi.Route{},
 })
 
@@ -279,6 +280,7 @@ func (c *KubeConfig) Run() {
 		"imageRepositoryMappings": {"ImageRepositoryMapping", client.RESTClient, latest.Codec},
 		"deployments":             {"Deployment", client.RESTClient, latest.Codec},
 		"deploymentConfigs":       {"DeploymentConfig", client.RESTClient, latest.Codec},
+		"genDeploymentConfigs":    {"DeploymentConfig", client.RESTClient, latest.Codec},
 		"routes":                  {"Route", client.RESTClient, latest.Codec},
 	}
 

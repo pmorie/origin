@@ -67,6 +67,11 @@ func (c *Fake) DeleteBuildConfig(id string) error {
 	return nil
 }
 
+func (c *Fake) WatchDeploymentConfigs(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	c.Actions = append(c.Actions, FakeAction{Action: "watch-deploymentconfig"})
+	return nil, nil
+}
+
 func (c *Fake) ListImages(selector labels.Selector) (*imageapi.ImageList, error) {
 	c.Actions = append(c.Actions, FakeAction{Action: "list-images"})
 	return &imageapi.ImageList{}, nil
@@ -137,6 +142,11 @@ func (c *Fake) DeleteDeploymentConfig(id string) error {
 	return nil
 }
 
+func (c *Fake) GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error) {
+	// TODO: implement
+	return nil, nil
+}
+
 func (c *Fake) ListDeployments(selector labels.Selector) (*deployapi.DeploymentList, error) {
 	c.Actions = append(c.Actions, FakeAction{Action: "list-deployment"})
 	return &deployapi.DeploymentList{}, nil
@@ -160,6 +170,11 @@ func (c *Fake) UpdateDeployment(deployment *deployapi.Deployment) (*deployapi.De
 func (c *Fake) DeleteDeployment(id string) error {
 	c.Actions = append(c.Actions, FakeAction{Action: "delete-deployment"})
 	return nil
+}
+
+func (c *Fake) WatchDeployments(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	c.Actions = append(c.Actions, FakeAction{Action: "watch-deployments"})
+	return nil, nil
 }
 
 func (c *Fake) ListRoutes(selector labels.Selector) (*routeapi.RouteList, error) {

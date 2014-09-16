@@ -7,6 +7,7 @@ import (
 	kubeclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
 	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -16,8 +17,9 @@ import (
 type DeploymentController struct {
 	osClient     osclient.Interface
 	kubeClient   kubeclient.Interface
-	syncTicker   <-chan time.Time
 	stateHandler DeploymentStateHandler
+	deployWatch  watch.Interface
+	shutdown     chan struct{}
 }
 
 // DeploymentStateHandler holds methods that handle the possible deployment states.
@@ -50,13 +52,18 @@ func NewDeploymentController(kubeClient kubeclient.Interface, osClient osclient.
 
 // Run begins watching and synchronizing deployment states.
 func (dc *DeploymentController) Run(period time.Duration) {
-	dc.syncTicker = time.Tick(period)
-	go util.Forever(func() { dc.synchronize() }, period)
+	go util.Forever(func() { dc.SyncDeployments() }, period)
+}
+
+func (dc *DeploymentController) Shutdown() {
+	close(dc.shutdown)
 }
 
 // The main synchronization loop.  Iterates through all deployments and handles the current state
 // for each.
-func (dc *DeploymentController) synchronize() {
+func (dc *DeploymentController) SyncDeployments() {
+	dc.shutdown = make(chan struct{})
+
 	deployments, err := dc.osClient.ListDeployments(labels.Everything())
 	if err != nil {
 		glog.Errorf("Synchronization error: %v (%#v)", err, err)
@@ -75,6 +82,16 @@ func (dc *DeploymentController) synchronize() {
 			glog.Errorf("Error synchronizing: %#v", err)
 		}
 	}
+
+	glog.Info("Subscribing to deployment configs")
+	if dc.deployWatch, err = dc.osClient.WatchDeployments(labels.Everything(), labels.Everything(), 0); err != nil {
+		glog.Errorf("Error subscribing to deployments: %#v", err)
+		return
+	}
+
+	go dc.watchDeployments()
+
+	<-dc.shutdown
 }
 
 // Invokes the appropriate handler for the current state of the given deployment.
@@ -82,14 +99,40 @@ func (dc *DeploymentController) syncDeployment(deployment *deployapi.Deployment)
 	glog.Infof("Synchronizing deployment id: %v state: %v resourceVersion: %v", deployment.ID, deployment.State, deployment.ResourceVersion)
 	var err error = nil
 	switch deployment.State {
-	case deployapi.DeploymentNew:
+	case deployapi.DeploymentStateNew:
 		err = dc.stateHandler.HandleNew(deployment)
-	case deployapi.DeploymentPending:
+	case deployapi.DeploymentStatePending:
 		err = dc.stateHandler.HandlePending(deployment)
-	case deployapi.DeploymentRunning:
+	case deployapi.DeploymentStateRunning:
 		err = dc.stateHandler.HandleRunning(deployment)
 	}
 	return err
+}
+
+func (dc *DeploymentController) watchDeployments() {
+	for {
+		select {
+		case <-dc.shutdown:
+			return
+		case event, open := <-dc.deployWatch.ResultChan():
+			if !open {
+				// watchChannel has been closed, or something else went
+				// wrong with our etcd watch call. Let the util.Forever()
+				// that called us call us again.
+				return
+			}
+
+			deployment, ok := event.Object.(*deployapi.Deployment)
+			if !ok {
+				glog.Errorf("Received unexpected object during deployment watch: %v", event)
+				continue
+			}
+
+			if err := dc.syncDeployment(deployment); err != nil {
+				glog.Errorf("Error synchronizing: %#v", err)
+			}
+		}
+	}
 }
 
 func (dh *DefaultDeploymentHandler) saveDeployment(deployment *deployapi.Deployment) error {
@@ -142,10 +185,10 @@ func (dh *DefaultDeploymentHandler) HandleNew(deployment *deployapi.Deployment) 
 	glog.Infof("Attempting to create deployment pod: %+v", deploymentPod)
 	if pod, err := dh.kubeClient.CreatePod(kubeapi.NewContext(), deploymentPod); err != nil {
 		glog.Warningf("Received error creating pod: %v", err)
-		deployment.State = deployapi.DeploymentFailed
+		deployment.State = deployapi.DeploymentStateFailed
 	} else {
 		glog.Infof("Successfully created pod %+v", pod)
-		deployment.State = deployapi.DeploymentPending
+		deployment.State = deployapi.DeploymentStatePending
 	}
 
 	return dh.saveDeployment(deployment)
@@ -158,13 +201,13 @@ func (dh *DefaultDeploymentHandler) HandlePending(deployment *deployapi.Deployme
 	pod, err := dh.kubeClient.GetPod(kubeapi.NewContext(), podID)
 	if err != nil {
 		glog.Errorf("Error retrieving pod for deployment ID %v: %#v", deployment.ID, err)
-		deployment.State = deployapi.DeploymentFailed
+		deployment.State = deployapi.DeploymentStateFailed
 	} else {
 		glog.Infof("Deployment pod is %+v", pod)
 
 		switch pod.CurrentState.Status {
 		case kubeapi.PodRunning:
-			deployment.State = deployapi.DeploymentRunning
+			deployment.State = deployapi.DeploymentStateRunning
 		case kubeapi.PodTerminated:
 			dh.checkForTerminatedDeploymentPod(deployment, pod)
 		}
@@ -180,7 +223,7 @@ func (dh *DefaultDeploymentHandler) HandleRunning(deployment *deployapi.Deployme
 	pod, err := dh.kubeClient.GetPod(kubeapi.NewContext(), podID)
 	if err != nil {
 		glog.Errorf("Error retrieving pod for deployment ID %v: %#v", deployment.ID, err)
-		deployment.State = deployapi.DeploymentFailed
+		deployment.State = deployapi.DeploymentStateFailed
 	} else {
 		glog.Infof("Deployment pod is %+v", pod)
 		dh.checkForTerminatedDeploymentPod(deployment, pod)
@@ -195,14 +238,14 @@ func (dh *DefaultDeploymentHandler) checkForTerminatedDeploymentPod(deployment *
 		return
 	}
 
-	deployment.State = deployapi.DeploymentComplete
+	deployment.State = deployapi.DeploymentStateComplete
 	for _, info := range pod.CurrentState.Info {
 		if info.State.Termination != nil && info.State.Termination.ExitCode != 0 {
-			deployment.State = deployapi.DeploymentFailed
+			deployment.State = deployapi.DeploymentStateFailed
 		}
 	}
 
-	if deployment.State == deployapi.DeploymentComplete {
+	if deployment.State == deployapi.DeploymentStateComplete {
 		podID := deploymentPodID(deployment)
 		glog.Infof("Removing deployment pod for ID %v", podID)
 		dh.kubeClient.DeletePod(kubeapi.NewContext(), podID)

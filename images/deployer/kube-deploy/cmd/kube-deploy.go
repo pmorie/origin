@@ -31,13 +31,13 @@ func main() {
 		glog.Fatalf("Unable to parse %v as a URL\n", err)
 	}
 
-	client, err := kubeclient.New(masterServer, klatest.Version, nil)
+	client, err := kubeclient.New(&kubeclient.Config{Host: masterServer, Version: klatest.Version})
 	if err != nil {
 		glog.Errorf("Unable to connect to kubernetes master: %v", err)
 		os.Exit(1)
 	}
 
-	osClient, err := osclient.New(masterServer, latest.Version, nil)
+	osClient, err := osclient.New(&kubeclient.Config{Host: masterServer, Version: latest.Version})
 	if err != nil {
 		glog.Errorf("Unable to connect to openshift master: %v", err)
 		os.Exit(1)
@@ -61,44 +61,49 @@ func deployTarget(client *kubeclient.Client, osClient osclient.Interface) {
 		return
 	}
 
-	selector, _ := labels.ParseSelector("deployment=" + deployment.ConfigID)
-	replicationControllers, err := client.ListReplicationControllers(selector)
-	if err != nil {
-		glog.Fatalf("Unable to get list of replication controllers %v\n", err)
-		return
+	var replicationControllers *api.ReplicationControllerList
+	configID, hasConfigID := deployment.Labels[deployapi.DeploymentConfigIDLabel]
+	if hasConfigID {
+		selector, _ := labels.ParseSelector(deployapi.DeploymentConfigIDLabel + "=" + configID)
+		replicationControllers, err = client.ListReplicationControllers(api.NewContext(), selector)
+		if err != nil {
+			glog.Fatalf("Unable to get list of replication controllers: %v\n", err)
+			return
+		}
 	}
 
 	controller := &api.ReplicationController{
 		DesiredState: deployment.ControllerTemplate,
-		Labels:       map[string]string{"deployment": deployment.ConfigID},
+		Labels:       map[string]string{deployapi.DeploymentConfigIDLabel: configID, "deploymentID": deploymentID},
 	}
 	if controller.DesiredState.PodTemplate.Labels == nil {
 		controller.DesiredState.PodTemplate.Labels = make(map[string]string)
 	}
-	controller.DesiredState.PodTemplate.Labels["deployment"] = deployment.ConfigID
+	controller.DesiredState.PodTemplate.Labels[deployapi.DeploymentConfigIDLabel] = configID
+	controller.DesiredState.PodTemplate.Labels["deploymentID"] = deploymentID
 
-	glog.Info("Creating replication controller: ")
+	glog.Info("Creating replication controller")
 	obj, _ := yaml.Marshal(controller)
 	glog.Info(string(obj))
 
-	if _, err := client.CreateReplicationController(controller); err != nil {
+	if _, err := client.CreateReplicationController(api.NewContext(), controller); err != nil {
 		glog.Fatalf("An error occurred creating the replication controller: %v", err)
 		return
 	}
 
-	glog.Info("Create replication controller")
+	glog.Info("Created replication controller")
 
 	// For this simple deploy, remove previous replication controllers
 	for _, rc := range replicationControllers.Items {
-		glog.Info("Stopping replication controller: ")
+		glog.Infof("Stopping replication controller: %v", rc.ID)
 		obj, _ := yaml.Marshal(rc)
 		glog.Info(string(obj))
-		rcObj, err1 := client.GetReplicationController(rc.ID)
+		rcObj, err1 := client.GetReplicationController(api.NewContext(), rc.ID)
 		if err1 != nil {
 			glog.Fatalf("Unable to get replication controller %s - error: %#v\n", rc.ID, err1)
 		}
 		rcObj.DesiredState.Replicas = 0
-		_, err := client.UpdateReplicationController(rcObj)
+		_, err := client.UpdateReplicationController(api.NewContext(), rcObj)
 		if err != nil {
 			glog.Fatalf("Unable to stop replication controller %s - error: %#v\n", rc.ID, err)
 		}
@@ -106,7 +111,7 @@ func deployTarget(client *kubeclient.Client, osClient osclient.Interface) {
 
 	for _, rc := range replicationControllers.Items {
 		glog.Infof("Deleting replication controller %s", rc.ID)
-		err := client.DeleteReplicationController(rc.ID)
+		err := client.DeleteReplicationController(api.NewContext(), rc.ID)
 		if err != nil {
 			glog.Fatalf("Unable to remove replication controller %s - error: %#v\n", rc.ID, err)
 		}
