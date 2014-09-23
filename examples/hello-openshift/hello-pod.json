@@ -10,7 +10,7 @@
         "name": "hello-openshift",
         "image": "openshift/hello-openshift",
         "ports": [{
-          "containerPort": 8080,
+          "containerPort": 8080, "hostPort": 6061,
         }]
       }]
     }
