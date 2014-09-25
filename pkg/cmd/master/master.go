@@ -165,6 +165,7 @@ func (c *config) startAllInOne() {
 	c.runBuildController()
 	c.runDeploymentController()
 	c.runDeploymentConfigController()
+	c.runDeploymentTriggerController()
 
 	select {}
 }
@@ -177,6 +178,7 @@ func (c *config) startMaster() {
 	c.runBuildController()
 	c.runDeploymentController()
 	c.runDeploymentConfigController()
+	c.runDeploymentTriggerController()
 
 	select {}
 }
@@ -395,6 +397,11 @@ func (c *config) runDeploymentConfigController() {
 
 	deployConfigController := deploy.NewDeploymentConfigController(osClient)
 	deployConfigController.Run(30 * time.Second)
+}
+
+func (c *config) runDeploymentTriggerController() {
+	deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
+	deployTriggerController.Run(30 * time.Second)
 }
 
 func env(key string, defaultValue string) string {
