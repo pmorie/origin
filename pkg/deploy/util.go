@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
