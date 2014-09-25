@@ -30,13 +30,7 @@ func (c *DeploymentConfigController) Run(period time.Duration) {
 func (c *DeploymentConfigController) runController() {
 	glog.Info("Bootstrapping deploymentConfig controller")
 
-	deploymentConfigs, err := c.osClient.ListDeploymentConfigs(labels.Everything())
-	if err != nil {
-		glog.Errorf("Bootstrap error: %v (%#v)", err, err)
-		return
-	}
-
-	err = c.subscribeToDeploymentConfigs()
+	err := c.subscribeToDeploymentConfigs()
 	if err != nil {
 		glog.Errorf("error subscribing to deploymentConfigs: %v", err)
 		return

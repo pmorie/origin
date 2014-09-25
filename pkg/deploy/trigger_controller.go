@@ -148,14 +148,7 @@ type DeploymentTriggerController struct {
 
 // NewDeploymentTriggerController creates a new DeploymentTriggerController.
 func NewDeploymentTriggerController(osClient osclient.Interface) *DeploymentTriggerController {
-	repoCache := imageRepoCache{}
-	generator := deploymentGenerator{&repoCache}
-
-	return &DeploymentTriggerController{
-		osClient:       osClient,
-		generator:      generator,
-		imageRepoCache: repoCache,
-	}
+	return &DeploymentTriggerController{osClient: osClient}
 }
 
 func (c *DeploymentTriggerController) Run(period time.Duration) {
@@ -186,7 +179,7 @@ func (c *DeploymentTriggerController) runController() {
 		if err != nil {
 			// TODO: error handling
 		} else if missed {
-			c.createDeploymentFor(&config)
+			// TODO: new config
 		}
 	}
 
@@ -258,12 +251,8 @@ func (c *DeploymentTriggerController) detectMissedImageTrigger(config *deployapi
 }
 
 func (c *DeploymentTriggerController) detectMissedConfigTrigger(config *deployapi.DeploymentConfig, deployment *deployapi.Deployment) (bool, error) {
-	hypotheticalDeployment, err := c.generator.generateDeployment(config)
-	if err != nil {
-		return false, err
-	}
-
-	return c.diff(hypotheticalDeployment, deployment), nil
+	// TODO: howto detect
+	return false, nil
 }
 
 // TODO: better diff mechanism
