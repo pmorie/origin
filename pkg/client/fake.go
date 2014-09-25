@@ -136,7 +136,7 @@ func (c *Fake) DeleteDeploymentConfig(id string) error {
 	return nil
 }
 
-func (c *Client) GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error) {
+func (c *Fake) GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error) {
 	// TODO: implement
 	return nil, nil
 }
