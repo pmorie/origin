@@ -22,10 +22,10 @@ func (g *DeploymentGenerator) generateDeployment(deploymentConfigID string) (*de
 	dirty := false
 	for _, repoName := range referencedRepos(config).List() {
 		params := paramsForImageChangeTrigger(config, repoName)
-		repo, err := osClient.getImageRepository(repoName)
+		repo, repoErr := g.osClient.GetImageRepository(repoName)
 
-		if err != nil {
-			return nil, err
+		if repoErr != nil {
+			return nil, repoErr
 		}
 
 		for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
@@ -35,7 +35,7 @@ func (g *DeploymentGenerator) generateDeployment(deploymentConfigID string) (*de
 
 			// TODO: If we grow beyond this single mutation, diffing hashes of
 			// a clone of the original config vs the mutation would be more generic.
-			newImage = repoName + ":" + repo.Tags[params.Tag]
+			newImage := repoName + ":" + repo.Tags[params.Tag]
 			if newImage != container.Image {
 				container.Image = newImage
 				dirty = true
