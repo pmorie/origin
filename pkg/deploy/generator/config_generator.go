@@ -1,16 +1,25 @@
-package deploy
+package generator
 
 import (
 	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
+	deploy "github.com/openshift/origin/pkg/deploy"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
 
-type DeploymentGenerator struct {
-	osClient osclient.Client
+type DeploymentConfigGenerator interface {
+	Generate(deploymentConfigID string) (*deployapi.DeploymentConfig, error)
 }
 
-func (g *DeploymentGenerator) generateDeployment(deploymentConfigID string) (*deployapi.DeploymentConfig, error) {
+type deploymentConfigGenerator struct {
+	osClient osclient.Interface
+}
+
+func NewDeploymentConfigGenerator(osClient osclient.Interface) DeploymentConfigGenerator {
+	return &deploymentConfigGenerator{osClient: osClient}
+}
+
+func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deployapi.DeploymentConfig, error) {
 	glog.Infof("Generating new deployment config from deploymentConfig %v", deploymentConfigID)
 
 	config, err := g.osClient.GetDeploymentConfig(deploymentConfigID)
@@ -20,12 +29,12 @@ func (g *DeploymentGenerator) generateDeployment(deploymentConfigID string) (*de
 	}
 
 	dirty := false
-	for _, repoName := range referencedRepos(config).List() {
-		params := paramsForImageChangeTrigger(config, repoName)
-		repo, err := g.osClient.GetImageRepository(repoName)
+	for _, repoName := range deploy.ReferencedRepos(config).List() {
+		params := deploy.ParamsForImageChangeTrigger(config, repoName)
+		repo, repoErr := g.osClient.GetImageRepository(repoName)
 
-		if err != nil {
-			return nil, err
+		if repoErr != nil {
+			return nil, repoErr
 		}
 
 		for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
