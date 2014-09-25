@@ -1,34 +1,26 @@
 package deploy
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
 	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
-	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
 // A DeploymentConfigController is responsible for implementing the triggers registered by DeploymentConfigs
 // TODO: needs cache of some kind
 type DeploymentConfigController struct {
 	osClient          osclient.Interface
-	generator         deploymentGenerator
 	deployConfigWatch watch.Interface
 }
 
 // NewDeploymentConfigController creates a new DeploymentConfigController.
 func NewDeploymentConfigController(osClient osclient.Interface) *DeploymentConfigController {
-	return &DeploymentConfigController{
-		osClient:  osClient,
-		generator: deploymentGenerator{&imageRepoCache{}},
-	}
+	return &DeploymentConfigController{osClient: osClient}
 }
 
 func (c *DeploymentConfigController) Run(period time.Duration) {
