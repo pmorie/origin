@@ -326,7 +326,7 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs() {
 			c.refreshTriggers(config)
 
 			if c.configTriggers.fire(config) {
-				c.createDeploymentFor(config)
+				// TODO: generate new deploymentConfig
 			}
 		}
 	}
@@ -411,22 +411,7 @@ func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageR
 		}
 
 		if c.imageRepoTriggers.fire(repo, &config, latestDeployment) {
-			err = c.createDeploymentFor(&config)
-			if err != nil {
-				glog.Errorf("Error creating deployment for deploymentConfig %v: %v", configID, err)
-				// TODO: error handling trigger
-			}
+			// TODO: generate new deployment config
 		}
 	}
-}
-
-func (c *DeploymentTriggerController) createDeploymentFor(config *deployapi.DeploymentConfig) error {
-	glog.Infof("Creating new deployment for deploymentConfig %v", config.ID)
-	deployment, err := c.generator.generateDeployment(config)
-	if err != nil {
-		return err
-	}
-
-	_, err = c.osClient.CreateDeployment(deployment)
-	return err
 }
