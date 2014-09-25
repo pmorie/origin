@@ -434,14 +434,12 @@ func (c *config) runDeploymentController() {
 }
 
 func (c *config) runDeploymentConfigController() {
-	osClient := c.getOsClient()
-
-	deployConfigController := deploy.NewDeploymentConfigController(osClient)
+	deployConfigController := deploy.NewDeploymentConfigController(c.getOsClient())
 	deployConfigController.Run(30 * time.Second)
 }
 
 func (c *config) runDeploymentTriggerController() {
-	deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
+	deployTriggerController := deploy.NewDeploymentTriggerController(c.getOsClient())
 	deployTriggerController.Run(30 * time.Second)
 }
 
