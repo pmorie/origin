@@ -11,23 +11,40 @@ type DeploymentGenerator struct {
 }
 
 func (g *DeploymentGenerator) generateDeployment(deploymentConfigID string) (*deployapi.DeploymentConfig, error) {
-	glog.Infof("Generating deploymentConfig %v", deploymentConfigID)
+	glog.Infof("Generating new deployment config from deploymentConfig %v", deploymentConfigID)
 
-	config, err = g.osClient.GetDeploymentConfig(deploymentConfigID)
+	config, err := g.osClient.GetDeploymentConfig(deploymentConfigID)
 
 	if err != nil {
 		return nil, err
 	}
 
+	dirty := false
 	for _, repoName := range referencedRepos(config).List() {
 		params := paramsForImageChangeTrigger(config, repoName)
-		repo := g.imageRepoCache.cachedRepo(repoName)
+		repo, err := osClient.getImageRepository(repoName)
+
+		if err != nil {
+			return nil, err
+		}
 
 		for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
-			if container.Image == params.ImageName {
-				container.Image = repoName + ":" + repo.Tags[params.Tag]
+			if container.Image != params.ImageName {
+				continue
+			}
+
+			// TODO: If we grow beyond this single mutation, diffing hashes of
+			// a clone of the original config vs the mutation would be more generic.
+			newImage = repoName + ":" + repo.Tags[params.Tag]
+			if newImage != container.Image {
+				container.Image = newImage
+				dirty = true
 			}
 		}
+	}
+
+	if dirty {
+		config.LatestVersion += 1
 	}
 
 	return config, nil
