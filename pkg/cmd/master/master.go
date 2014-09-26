@@ -211,19 +211,21 @@ func (c *config) runApiserver() {
 		glog.Errorf("Error setting up Kubernetes server storage: %v", err)
 	}
 
-	buildRegistry := buildetcd.New(etcdHelper)
-	imageRegistry := imageetcd.New(etcdHelper)
+	buildEtcd := buildetcd.New(etcdHelper)
+	imageEtcd := imageetcd.New(etcdHelper)
 	deployEtcd := deployetcd.New(etcdHelper)
+	deployConfigGen := deploygen.NewDeploymentConfigGenerator(deployEtcd, imageEtcd)
 
 	// initialize OpenShift API
 	storage := map[string]apiserver.RESTStorage{
-		"builds":                  buildregistry.NewREST(buildRegistry),
-		"buildConfigs":            buildconfigregistry.NewREST(buildRegistry),
-		"images":                  image.NewREST(imageRegistry),
-		"imageRepositories":       imagerepository.NewREST(imageRegistry),
-		"imageRepositoryMappings": imagerepositorymapping.NewREST(imageRegistry, imageRegistry),
+		"builds":                  buildregistry.NewREST(buildEtcd),
+		"buildConfigs":            buildconfigregistry.NewREST(buildEtcd),
+		"images":                  image.NewREST(imageEtcd),
+		"imageRepositories":       imagerepository.NewREST(imageEtcd),
+		"imageRepositoryMappings": imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
 		"deployments":             deployregistry.NewREST(deployEtcd),
 		"deploymentConfigs":       deployconfigregistry.NewREST(deployEtcd),
+		"genDeploymentConfigs":    deploygen.NewStorage(deployConfigGen, v1beta1.Codec),
 		"templateConfigs":         template.NewStorage(),
 	}
 
@@ -235,10 +237,6 @@ func (c *config) runApiserver() {
 		webhook.NewController(osClient, map[string]webhook.Plugin{
 			"github": github.New(),
 		})))
-
-	// initialize deployment config generator endpoint
-	genPrefix := osPrefix + "/deployConfigGenerator"
-	osMux.Handle(genPrefix, http.StripPrefix(genPrefix, deploygen.NewDeploymentConfigGeneratorController(deploygen.NewDeploymentConfigGenerator(osClient), v1beta1.Codec)))
 
 	// initialize Kubernetes API
 	podInfoGetter := &kubeclient.HTTPPodInfoGetter{
