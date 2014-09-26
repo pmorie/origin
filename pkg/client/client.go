@@ -71,6 +71,7 @@ type DeploymentConfigInterface interface {
 	CreateDeploymentConfig(*deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 	UpdateDeploymentConfig(*deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 	DeleteDeploymentConfig(string) error
+	GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error)
 }
 
 // DeploymentInterface contains methods for working with Deployments
@@ -272,6 +273,10 @@ func (c *Client) UpdateDeploymentConfig(deploymentConfig *deployapi.DeploymentCo
 // DeleteDeploymentConfig deletes an existing deploymentConfig.
 func (c *Client) DeleteDeploymentConfig(id string) error {
 	return c.Delete().Path("deploymentConfigs").Path(id).Do().Error()
+}
+
+func (c *Client) GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error) {
+	return nil, nil
 }
 
 // ListDeployments takes a selector, and returns the list of deployments that match that selector
