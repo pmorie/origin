@@ -3,6 +3,7 @@ package deploy
 import (
 	"time"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
@@ -30,7 +31,30 @@ func (c *DeploymentConfigController) Run(period time.Duration) {
 func (c *DeploymentConfigController) runController() {
 	glog.Info("Bootstrapping deploymentConfig controller")
 
-	err := c.subscribeToDeploymentConfigs()
+	deploymentConfigs, err := c.osClient.ListDeploymentConfigs(labels.Everything())
+	if err != nil {
+		glog.Errorf("Bootstrap error: %v (%#v)", err, err)
+		return
+	}
+
+	glog.Info("Determine whether to deploy deploymentConfigs")
+	for _, config := range deploymentConfigs.Items {
+		deploy, err := c.shouldDeploy(&config)
+		if err != nil {
+			// TODO: better error handling
+			glog.Errorf("Error determining whether to redeploy deploymentConfig %v: %v", config.ID, err)
+			continue
+		}
+
+		if deploy {
+			err = c.deploy(&config)
+			if err != nil {
+				continue
+			}
+		}
+	}
+
+	err = c.subscribeToDeploymentConfigs()
 	if err != nil {
 		glog.Errorf("error subscribing to deploymentConfigs: %v", err)
 		return
@@ -39,6 +63,35 @@ func (c *DeploymentConfigController) runController() {
 	go c.watchDeploymentConfigs()
 
 	select {}
+}
+
+// TODO: reduce code duplication between trigger and config controllers
+func (c *DeploymentConfigController) latestDeploymentForConfig(config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
+	latestDeploymentId := config.ID + "-" + string(config.LatestVersion)
+	deployment, err := c.osClient.GetDeployment(latestDeploymentId)
+	if err != nil {
+		// TODO: probably some error / race handling to do here
+		return nil, err
+	}
+
+	return deployment, nil
+}
+
+func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentConfig) (bool, error) {
+	deployment, err := c.latestDeploymentForConfig(config)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return true, nil
+		} else {
+			return false, err
+		}
+	}
+
+	return !PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
+}
+
+func (c *DeploymentConfigController) deploy(config *deployapi.DeploymentConfig) error {
+	return nil
 }
 
 func (c *DeploymentConfigController) subscribeToDeploymentConfigs() error {
