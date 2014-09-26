@@ -9,7 +9,7 @@ import (
 
 // Convenience methods
 
-func manualTrigger() api.DeploymentTriggerPolicy {
+func manualTrigger() []api.DeploymentTriggerPolicy {
 	return []api.DeploymentTriggerPolicy{
 		api.DeploymentTriggerPolicy{
 			Type: api.DeploymentTriggerManual,
@@ -122,12 +122,12 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 			"Triggers[0].Type",
 		},
 		"missing Trigger ImageChangeParams.RepositoryName": {
-			api.DeploymentConfig: {
-				Triggers: []deployapi.DeploymentTriggerPolicy{
-					deployapi.DeploymentTriggerPolicy{
-						Type: deployapi.DeploymentTriggerOnImageChange,
-						ImageParams: deployapi.ImageChangeTriggerParams{
-							"ImageName": "foo",
+			api.DeploymentConfig{
+				Triggers: []api.DeploymentTriggerPolicy{
+					api.DeploymentTriggerPolicy{
+						Type: api.DeploymentTriggerOnImageChange,
+						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
+							ImageName: "foo",
 						},
 					},
 				},
@@ -137,12 +137,12 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 			"ImageChangeParams.RepositoryName",
 		},
 		"missing Trigger ImageChangeParams.ImageName": {
-			api.DeploymentConfig: {
-				Triggers: []deployapi.DeploymentTriggerPolicy{
-					deployapi.DeploymentTriggerPolicy{
-						Type: deployapi.DeploymentTriggerOnImageChange,
-						ImageParams: deployapi.ImageChangeTriggerParams{
-							"RepositoryName": "foo",
+			api.DeploymentConfig{
+				Triggers: []api.DeploymentTriggerPolicy{
+					api.DeploymentTriggerPolicy{
+						Type: api.DeploymentTriggerOnImageChange,
+						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
+							RepositoryName: "foo",
 						},
 					},
 				},

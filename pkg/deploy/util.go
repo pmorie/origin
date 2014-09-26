@@ -18,6 +18,10 @@ func LatestDeploymentIDForConfig(config *deployapi.DeploymentConfig) string {
 func ReferencedRepos(config *deployapi.DeploymentConfig) util.StringSet {
 	repoIDs := util.StringSet{}
 
+	if config == nil || config.Triggers == nil {
+		return repoIDs
+	}
+
 	for _, trigger := range config.Triggers {
 		if trigger.Type == deployapi.DeploymentTriggerOnImageChange {
 			repoIDs.Insert(trigger.ImageChangeParams.RepositoryName)
@@ -28,6 +32,10 @@ func ReferencedRepos(config *deployapi.DeploymentConfig) util.StringSet {
 }
 
 func ParamsForImageChangeTrigger(config *deployapi.DeploymentConfig, repoName string) *deployapi.DeploymentTriggerImageChangeParams {
+	if config == nil || config.Triggers == nil {
+		return nil
+	}
+
 	for _, trigger := range config.Triggers {
 		if trigger.Type == deployapi.DeploymentTriggerOnImageChange && trigger.ImageChangeParams.RepositoryName == repoName {
 			return trigger.ImageChangeParams
@@ -41,6 +49,10 @@ func ParamsForImageChangeTrigger(config *deployapi.DeploymentConfig, repoName st
 func Difference(a, b util.StringSet) util.StringSet {
 	diff := util.StringSet{}
 
+	if a == nil || b == nil {
+		return diff
+	}
+
 	for _, s := range a.List() {
 		if !b.Has(s) {
 			diff.Insert(s)
@@ -53,6 +65,10 @@ func Difference(a, b util.StringSet) util.StringSet {
 // Returns a map of referenced image name to image version
 func ReferencedImages(deployment *deployapi.Deployment) map[string]string {
 	result := make(map[string]string)
+
+	if deployment == nil {
+		return result
+	}
 
 	for _, container := range deployment.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
 		name, version := ParseContainerImage(container.Image)
