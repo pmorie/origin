@@ -137,6 +137,11 @@ func (c *Fake) DeleteDeploymentConfig(id string) error {
 	return nil
 }
 
+func (c *Client) GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error) {
+	// TODO: implement
+	return nil, nil
+}
+
 func (c *Fake) ListDeployments(selector labels.Selector) (*deployapi.DeploymentList, error) {
 	c.Actions = append(c.Actions, FakeAction{Action: "list-deployment"})
 	return &deployapi.DeploymentList{}, nil
