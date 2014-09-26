@@ -40,6 +40,7 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
 	"github.com/openshift/origin/pkg/deploy"
+	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -234,6 +235,10 @@ func (c *config) runApiserver() {
 		webhook.NewController(osClient, map[string]webhook.Plugin{
 			"github": github.New(),
 		})))
+
+	// initialize deployment config generator endpoint
+	genPrefix := osPrefix + "/deployConfigGenerator"
+	osMux.Handle(genPrefix, http.StripPrefix(genPrefix, deploygen.NewDeploymentConfigGeneratorController(deploygen.NewDeploymentConfigGenerator(osClient), v1beta1.Codec)))
 
 	// initialize Kubernetes API
 	podInfoGetter := &kubeclient.HTTPPodInfoGetter{

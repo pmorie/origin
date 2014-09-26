@@ -127,8 +127,8 @@ func (t *imageRepoTriggers) fire(
 
 	var (
 		repoName               = repo.DockerImageRepository
-		referencedImageVersion = referencedImages(deployment)[repo.DockerImageRepository]
-		params                 = paramsForImageChangeTrigger(config, repoName)
+		referencedImageVersion = ReferencedImages(deployment)[repo.DockerImageRepository]
+		params                 = ParamsForImageChangeTrigger(config, repoName)
 		latestTagVersion       = repo.Tags[params.Tag]
 	)
 
@@ -230,7 +230,7 @@ func (c *DeploymentTriggerController) detectMissedTrigger(config *deployapi.Depl
 }
 
 func (c *DeploymentTriggerController) detectMissedImageTrigger(config *deployapi.DeploymentConfig, deployment *deployapi.Deployment) bool {
-	refImageVersions := referencedImages(deployment)
+	refImageVersions := ReferencedImages(deployment)
 
 	for _, trigger := range config.Triggers {
 		if trigger.Type != deployapi.DeploymentTriggerOnImageChange {
@@ -327,13 +327,13 @@ func (c *DeploymentTriggerController) refreshTriggers(config *deployapi.Deployme
 func (c *DeploymentTriggerController) refreshImageRepoChangeTriggers(config *deployapi.DeploymentConfig) {
 	glog.Infof("Refreshing image repo triggers for deploymentConfig %v", config.ID)
 	configID := config.ID
-	currentRepoIDs := referencedRepos(config)
+	currentRepoIDs := ReferencedRepos(config)
 
 	// Refresh the image repo imageRepoTriggers
 	c.imageRepoTriggers.insert(configID, currentRepoIDs)
 
 	// Delete triggers for the removed image repos
-	deletedRepoIDs := difference(c.imageRepoTriggers.reposForConfig(configID), currentRepoIDs)
+	deletedRepoIDs := Difference(c.imageRepoTriggers.reposForConfig(configID), currentRepoIDs)
 	c.imageRepoTriggers.remove(configID, deletedRepoIDs)
 }
 
