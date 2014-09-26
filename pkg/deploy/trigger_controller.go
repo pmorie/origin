@@ -1,7 +1,6 @@
 package deploy
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
@@ -177,9 +176,16 @@ func (c *DeploymentTriggerController) runController() {
 
 		missed, err := c.detectMissedTrigger(&config)
 		if err != nil {
-			// TODO: error handling
-		} else if missed {
-			// TODO: new config
+			// TODO: better error handling
+			glog.Errorf("Error handling missed trigger for deploymentConfig %v: %v", config.ID, err)
+			continue
+		}
+
+		if missed {
+			err = c.regenerateDeploymentConfig(&config)
+			if err != nil {
+				continue
+			}
 		}
 	}
 
@@ -199,6 +205,22 @@ func (c *DeploymentTriggerController) runController() {
 	go c.watchImageRepositories()
 
 	select {}
+}
+
+func (c *DeploymentTriggerController) regenerateDeploymentConfig(config *deployapi.DeploymentConfig) error {
+	newConfig, err := c.osClient.GenerateDeploymentConfig(config.ID)
+	if err != nil {
+		glog.Errorf("Error generating new version of deploymentConfig %v", config.ID)
+		return err
+	}
+
+	_, err = c.osClient.UpdateDeploymentConfig(newConfig)
+	if err != nil {
+		glog.Errorf("Error updating deploymentConfig %v", config.ID)
+		return err
+	}
+
+	return nil
 }
 
 func (c *DeploymentTriggerController) latestDeploymentForConfig(config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
@@ -251,16 +273,7 @@ func (c *DeploymentTriggerController) detectMissedImageTrigger(config *deployapi
 }
 
 func (c *DeploymentTriggerController) detectMissedConfigTrigger(config *deployapi.DeploymentConfig, deployment *deployapi.Deployment) (bool, error) {
-	// TODO: howto detect
-	return false, nil
-}
-
-// TODO: better diff mechanism
-func (c *DeploymentTriggerController) diff(a, b *deployapi.Deployment) bool {
-	aStr := fmt.Sprintf("%+v", a)
-	bStr := fmt.Sprintf("%+v", b)
-
-	return (aStr != bStr)
+	return PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
 }
 
 func (c *DeploymentTriggerController) subscribeToImageRepos() error {

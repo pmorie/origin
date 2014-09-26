@@ -1,8 +1,11 @@
 package deploy
 
 import (
+	"fmt"
+	"hash/adler32"
 	"strings"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
@@ -58,4 +61,14 @@ func ReferencedImages(deployment *deployapi.Deployment) map[string]string {
 func ParseContainerImage(image string) (string, string) {
 	tokens := strings.Split(image, ":")
 	return tokens[0], tokens[1]
+}
+
+func HashPodTemplate(t api.PodTemplate) uint64 {
+	hash := adler32.New()
+	fmt.Fprintf(hash, "%#v", t)
+	return uint64(hash.Sum32())
+}
+
+func PodTemplatesEqual(a, b api.PodTemplate) bool {
+	return HashPodTemplate(a) == HashPodTemplate(b)
 }
