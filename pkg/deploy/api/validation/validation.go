@@ -2,6 +2,7 @@ package validation
 
 import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/validation"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
 
@@ -11,8 +12,8 @@ import (
 
 func ValidateDeployment(deployment *deployapi.Deployment) errors.ErrorList {
 	result := validateDeploymentStrategy(&deployment.Strategy).Prefix("Strategy")
-
-	// TODO: validate ReplicationControllerState
+	controllerStateErrors := validation.ValidateReplicationControllerState(&deployment.ControllerTemplate)
+	result = append(result, controllerStateErrors.Prefix("ControllerTemplate")...)
 
 	return result
 }
@@ -27,9 +28,17 @@ func validateDeploymentStrategy(strategy *deployapi.DeploymentStrategy) errors.E
 	if strategy.CustomPod == nil {
 		result = append(result, errors.NewFieldRequired("CustomPod", nil))
 	} else {
-		if len(strategy.CustomPod.Image) == 0 {
-			result = append(result, errors.NewFieldRequired("CustomPod.Image", ""))
-		}
+		result = append(result, validateCustomPodStrategy(strategy.CustomPod).Prefix("CustomPod")...)
+	}
+
+	return result
+}
+
+func validateCustomPodStrategy(customPod *deployapi.CustomPodDeploymentStrategy) errors.ErrorList {
+	result := errors.ErrorList{}
+
+	if len(customPod.Image) == 0 {
+		result = append(result, errors.NewFieldRequired("CustomPod.Image", ""))
 	}
 
 	return result
@@ -46,14 +55,22 @@ func validateTrigger(trigger *deployapi.DeploymentTriggerPolicy) errors.ErrorLis
 		if trigger.ImageChangeParams == nil {
 			result = append(result, errors.NewFieldRequired("ImageChangeParams", nil))
 		} else {
-			if len(trigger.ImageChangeParams.RepositoryName) == 0 {
-				result = append(result, errors.NewFieldRequired("ImageChangeParams.RepositoryName", ""))
-			}
-
-			if len(trigger.ImageChangeParams.ImageName) == 0 {
-				result = append(result, errors.NewFieldRequired("ImageChangeParams.ImageName", ""))
-			}
+			result = append(result, validateImageChangeParams(trigger.ImageChangeParams).Prefix("ImageChangeParams")...)
 		}
+	}
+
+	return result
+}
+
+func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangeParams) errors.ErrorList {
+	result := errors.ErrorList{}
+
+	if len(params.RepositoryName) == 0 {
+		result = append(result, errors.NewFieldRequired("RepositoryName", ""))
+	}
+
+	if len(params.ImageName) == 0 {
+		result = append(result, errors.NewFieldRequired("ImageName", ""))
 	}
 
 	return result
@@ -67,8 +84,8 @@ func ValidateDeploymentConfig(config *deployapi.DeploymentConfig) errors.ErrorLi
 	}
 
 	result = append(result, validateDeploymentStrategy(&config.Template.Strategy).Prefix("Template.Strategy")...)
-
-	// TODO: validate ReplicationControllerState
+	controllerStateErrors := validation.ValidateReplicationControllerState(&config.Template.ControllerTemplate)
+	result = append(result, controllerStateErrors.Prefix("Template.ControllerTemplate")...)
 
 	return result
 }
