@@ -3,6 +3,7 @@ package deploy
 import (
 	"time"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
@@ -39,19 +40,7 @@ func (c *DeploymentConfigController) runController() {
 
 	glog.Info("Determine whether to deploy deploymentConfigs")
 	for _, config := range deploymentConfigs.Items {
-		deploy, err := c.shouldDeploy(&config)
-		if err != nil {
-			// TODO: better error handling
-			glog.Errorf("Error determining whether to redeploy deploymentConfig %v: %v", config.ID, err)
-			continue
-		}
-
-		if deploy {
-			err = c.deploy(&config)
-			if err != nil {
-				continue
-			}
-		}
+		c.handle(&config)
 	}
 
 	err = c.subscribeToDeploymentConfigs()
@@ -77,6 +66,26 @@ func (c *DeploymentConfigController) latestDeploymentForConfig(config *deployapi
 	return deployment, nil
 }
 
+func (c *DeploymentConfigController) handle(config *deployapi.DeploymentConfig) error {
+	deploy, err := c.shouldDeploy(config)
+	if err != nil {
+		// TODO: better error handling
+		glog.Errorf("Error determining whether to redeploy deploymentConfig %v: %v", config.ID, err)
+		return err
+	}
+
+	if !deploy {
+		return nil
+	}
+
+	err = c.deploy(config)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentConfig) (bool, error) {
 	deployment, err := c.latestDeploymentForConfig(config)
 	if err != nil {
@@ -91,7 +100,24 @@ func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentCo
 }
 
 func (c *DeploymentConfigController) deploy(config *deployapi.DeploymentConfig) error {
-	return nil
+	labels := make(map[string]string)
+	for k, v := range config.Labels {
+		labels[k] = v
+	}
+	labels["configID"] = config.ID
+
+	deployment := &deployapi.Deployment{
+		JSONBase: api.JSONBase{
+			ID: LatestDeploymentIDForConfig(config),
+		},
+		Labels:             labels,
+		Strategy:           config.Template.Strategy,
+		ControllerTemplate: config.Template.ControllerTemplate,
+	}
+
+	_, err := c.osClient.CreateDeployment(deployment)
+
+	return err
 }
 
 func (c *DeploymentConfigController) subscribeToDeploymentConfigs() error {
@@ -123,9 +149,7 @@ func (c *DeploymentConfigController) watchDeploymentConfigs() {
 			}
 
 			glog.Infof("Received deploymentConfig watch for ID %v", config.ID)
-
-			// TODO:
-			// create deployment if the new config doesn't match the old one
+			c.handle(config)
 		}
 	}
 }

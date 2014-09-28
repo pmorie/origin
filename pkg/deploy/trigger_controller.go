@@ -224,7 +224,7 @@ func (c *DeploymentTriggerController) regenerateDeploymentConfig(config *deploya
 }
 
 func (c *DeploymentTriggerController) latestDeploymentForConfig(config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
-	latestDeploymentId := config.ID + "-" + string(config.LatestVersion)
+	latestDeploymentId := LatestDeploymentIDForConfig(config)
 	deployment, err := c.osClient.GetDeployment(latestDeploymentId)
 	if err != nil {
 		// TODO: probably some error / race handling to do here
