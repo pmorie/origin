@@ -10,6 +10,10 @@ import (
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
 
+func LatestDeploymentIDForConfig(config *deployapi.DeploymentConfig) string {
+	return config.ID + "-" + string(config.LatestVersion)
+}
+
 // Returns the image repositories names a config has triggers registered for
 func ReferencedRepos(config *deployapi.DeploymentConfig) util.StringSet {
 	repoIDs := util.StringSet{}
