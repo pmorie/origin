@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"strconv"
+
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/validation"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -38,7 +40,7 @@ func validateCustomPodStrategy(customPod *deployapi.CustomPodDeploymentStrategy)
 	result := errors.ErrorList{}
 
 	if len(customPod.Image) == 0 {
-		result = append(result, errors.NewFieldRequired("CustomPod.Image", ""))
+		result = append(result, errors.NewFieldRequired("Image", ""))
 	}
 
 	return result
@@ -80,7 +82,7 @@ func ValidateDeploymentConfig(config *deployapi.DeploymentConfig) errors.ErrorLi
 	result := errors.ErrorList{}
 
 	for i, _ := range config.Triggers {
-		result = append(result, validateTrigger(&config.Triggers[i]).Prefix("Triggers["+string(i)+"]")...)
+		result = append(result, validateTrigger(&config.Triggers[i]).Prefix("Triggers["+strconv.Itoa(i)+"]")...)
 	}
 
 	result = append(result, validateDeploymentStrategy(&config.Template.Strategy).Prefix("Template.Strategy")...)
