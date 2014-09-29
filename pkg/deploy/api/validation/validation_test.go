@@ -149,7 +149,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				Triggers: []api.DeploymentTriggerPolicy{
 					{
 						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
-							ImageName: "foo",
+							ContainerNames: []string{"foo"},
 						},
 					},
 				},
@@ -164,7 +164,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 					{
 						Type: api.DeploymentTriggerOnImageChange,
 						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
-							ImageName: "foo",
+							ContainerNames: []string{"foo"},
 						},
 					},
 				},
@@ -173,7 +173,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 			errors.ValidationErrorTypeRequired,
 			"Triggers[0].ImageChangeParams.RepositoryName",
 		},
-		"missing Trigger ImageChangeParams.ImageName": {
+		"missing Trigger ImageChangeParams.ContainerNames": {
 			api.DeploymentConfig{
 				Triggers: []api.DeploymentTriggerPolicy{
 					{
@@ -186,7 +186,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				Template: okDeploymentTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Triggers[0].ImageChangeParams.ImageName",
+			"Triggers[0].ImageChangeParams.ContainerNames",
 		},
 		"missing Strategy.Type": {
 			api.DeploymentConfig{

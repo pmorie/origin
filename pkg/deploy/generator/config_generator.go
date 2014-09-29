@@ -48,23 +48,36 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 
 		// TODO: If the repo a config references has disappeared, what's the correct reaction?
 		if repo == nil {
+			glog.Errorf("Received a nil ImageRepository for repoName=%s (potentially invalid DeploymentConfig state)", repoName)
 			continue
 		}
 
-		for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
-			if container.Image != params.ImageName {
+		// TODO: If the tag is missing, what's the correct reaction?
+		tag, tagExists := repo.Tags[params.Tag]
+		if !tagExists {
+			glog.Errorf("No tag %s found for repository %s (potentially invalid DeploymentConfig state)", tag, repoName)
+			continue
+		}
+		newImage := repo.DockerImageRepository + ":" + tag
+
+		for i, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
+			match := false
+			for _, containerNameParam := range params.ContainerNames {
+				if containerNameParam == container.Name {
+					match = true
+					break
+				}
+			}
+
+			if !match {
 				continue
 			}
 
 			// TODO: If we grow beyond this single mutation, diffing hashes of
 			// a clone of the original config vs the mutation would be more generic.
-			// TODO: If the referenced tag doesn't exist, what's the correct reaction?
-			if tag, exists := repo.Tags[params.Tag]; exists {
-				newImage := repoName + ":" + tag
-				if newImage != container.Image {
-					container.Image = newImage
-					dirty = true
-				}
+			if newImage != container.Image {
+				config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[i].Image = newImage
+				dirty = true
 			}
 		}
 	}

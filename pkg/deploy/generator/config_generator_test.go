@@ -17,8 +17,10 @@ func basicDeploymentConfig() *deployapi.DeploymentConfig {
 			{
 				Type: deployapi.DeploymentTriggerOnImageChange,
 				ImageChangeParams: &deployapi.DeploymentTriggerImageChangeParams{
-					RepositoryName: "repo1",
-					ImageName:      "image1",
+					ContainerNames: []string{
+						"container1",
+					},
+					RepositoryName: "imageRepo1",
 					Tag:            "tag1",
 				},
 			},
@@ -30,10 +32,12 @@ func basicDeploymentConfig() *deployapi.DeploymentConfig {
 						Manifest: kubeapi.ContainerManifest{
 							Containers: []kubeapi.Container{
 								{
-									Image: "image1",
+									Name:  "container1",
+									Image: "registry:8080/repo1:ref1",
 								},
 								{
-									Image: "image2",
+									Name:  "container2",
+									Image: "registry:8080/repo1:ref2",
 								},
 							},
 						},
@@ -96,22 +100,11 @@ func TestGenerateFromConfigWithUpdatedImageRef(t *testing.T) {
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
-	imageRepoRegistry.ImageRepositories = &imageapi.ImageRepositoryList{
-		Items: []imageapi.ImageRepository{
-			{
-				JSONBase:              kubeapi.JSONBase{ID: "image1"},
-				DockerImageRepository: "repo1",
-				Tags: map[string]string{
-					"tag1": "ref1",
-				},
-			},
-			{
-				JSONBase:              kubeapi.JSONBase{ID: "image2"},
-				DockerImageRepository: "repo2",
-				Tags: map[string]string{
-					"tag1": "ref1",
-				},
-			},
+	imageRepoRegistry.ImageRepository = &imageapi.ImageRepository{
+		JSONBase:              kubeapi.JSONBase{ID: "imageRepo1"},
+		DockerImageRepository: "registry:8080/repo1",
+		Tags: map[string]string{
+			"tag1": "ref3",
 		},
 	}
 
@@ -133,7 +126,7 @@ func TestGenerateFromConfigWithUpdatedImageRef(t *testing.T) {
 		t.Fatalf("Expected config LatestVersion=2, got %d", config.LatestVersion)
 	}
 
-	expected := "repo1:ref1"
+	expected := "registry:8080/repo1:ref3"
 	actual := config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[0].Image
 	if expected != actual {
 		t.Fatalf("Expected container image %s, got %s", expected, actual)
