@@ -161,7 +161,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 		"missing Trigger ImageChangeParams.RepositoryName": {
 			api.DeploymentConfig{
 				Triggers: []api.DeploymentTriggerPolicy{
-					api.DeploymentTriggerPolicy{
+					{
 						Type: api.DeploymentTriggerOnImageChange,
 						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
 							ImageName: "foo",
@@ -176,7 +176,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 		"missing Trigger ImageChangeParams.ImageName": {
 			api.DeploymentConfig{
 				Triggers: []api.DeploymentTriggerPolicy{
-					api.DeploymentTriggerPolicy{
+					{
 						Type: api.DeploymentTriggerOnImageChange,
 						ImageChangeParams: &api.DeploymentTriggerImageChangeParams{
 							RepositoryName: "foo",
