@@ -7,9 +7,14 @@ SUITE_DIR=$(ls $(dirname $0)/deploy-suite/*.sh)
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PATH=${SCRIPT_PATH}/../_output/go/bin:$PATH
 
+source ${SCRIPT_PATH}/util.sh
+
 # Start openshift
 openshift start &
 OPENSHIFT_PID=$!
+
+# Wait for server to start
+wait_for_url "http://127.0.0.1:8080/healthz" "apiserver: "
 
 # Do cluster setup
 
