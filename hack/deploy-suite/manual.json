@@ -2,7 +2,11 @@
     "id":"frontend-config3",
     "kind":"DeploymentConfig",
     "apiVersion":"v1beta1",
-    "triggerPolicy":"manual",
+    "triggers":[
+        {
+            "type": "manual"
+        }
+    ],
     "template":{
         "strategy":{
             "type":"customPod",
