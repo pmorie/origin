@@ -17,6 +17,12 @@ type deploymentConfigCache struct {
 	store map[string]deployapi.DeploymentConfig
 }
 
+func newDeploymentConfigCache() deploymentConfigCache {
+	return deploymentConfigCache{
+		make(map[string]deployapi.DeploymentConfig),
+	}
+}
+
 func (c *deploymentConfigCache) refreshList(configs *deployapi.DeploymentConfigList) {
 	for _, config := range configs.Items {
 		c.refresh(&config)
@@ -49,6 +55,12 @@ type imageRepoCache struct {
 	store map[string]imageapi.ImageRepository
 }
 
+func newImageRepoCache() imageRepoCache {
+	return imageRepoCache{
+		make(map[string]imageapi.ImageRepository),
+	}
+}
+
 func (c *imageRepoCache) refreshList(repos *imageapi.ImageRepositoryList) {
 	for _, repo := range repos.Items {
 		c.refresh(&repo)
@@ -71,6 +83,13 @@ func (c *imageRepoCache) cachedRepo(name string) imageapi.ImageRepository {
 type imageRepoTriggers struct {
 	reposToConfigs map[string]util.StringSet
 	configsToRepos map[string]util.StringSet
+}
+
+func newImageRepoTriggers() imageRepoTriggers {
+	return imageRepoTriggers{
+		make(map[string]util.StringSet),
+		make(map[string]util.StringSet),
+	}
 }
 
 func (t *imageRepoTriggers) insert(configID string, repoIDs util.StringSet) {
@@ -147,7 +166,12 @@ type DeploymentTriggerController struct {
 
 // NewDeploymentTriggerController creates a new DeploymentTriggerController.
 func NewDeploymentTriggerController(osClient osclient.Interface) *DeploymentTriggerController {
-	return &DeploymentTriggerController{osClient: osClient}
+	return &DeploymentTriggerController{
+		osClient:          osClient,
+		imageRepoCache:    newImageRepoCache(),
+		imageRepoTriggers: newImageRepoTriggers(),
+		configCache:       newDeploymentConfigCache(),
+	}
 }
 
 func (c *DeploymentTriggerController) Run(period time.Duration) {
