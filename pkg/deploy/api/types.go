@@ -71,7 +71,7 @@ const (
 type DeploymentConfig struct {
 	api.JSONBase  `json:",inline" yaml:",inline"`
 	Labels        map[string]string         `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Triggers      []DeploymentTriggerPolicy `json:"triggerPolicies,omitempty" yaml:"triggerPolicies,omitempty"`
+	Triggers      []DeploymentTriggerPolicy `json:"triggers,omitempty" yaml:"triggers,omitempty"`
 	Template      DeploymentTemplate        `json:"template,omitempty" yaml:"template,omitempty"`
 	LatestVersion int                       `json:"latestVersion,omitempty" yaml:"latestVersion,omitempty"`
 }
