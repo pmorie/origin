@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"fmt"
 	"github.com/golang/glog"
 	deploy "github.com/openshift/origin/pkg/deploy"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -32,6 +33,10 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		return nil, err
 	}
 
+	if config == nil {
+		return nil, fmt.Errorf("No deployment config returned with id %v", deploymentConfigID)
+	}
+
 	dirty := false
 	for _, repoName := range deploy.ReferencedRepos(config).List() {
 		params := deploy.ParamsForImageChangeTrigger(config, repoName)
@@ -41,6 +46,11 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 			return nil, repoErr
 		}
 
+		// TODO: If the repo a config references has disappeared, what's the correct reaction?
+		if repo == nil {
+			continue
+		}
+
 		for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
 			if container.Image != params.ImageName {
 				continue
@@ -48,10 +58,13 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 
 			// TODO: If we grow beyond this single mutation, diffing hashes of
 			// a clone of the original config vs the mutation would be more generic.
-			newImage := repoName + ":" + repo.Tags[params.Tag]
-			if newImage != container.Image {
-				container.Image = newImage
-				dirty = true
+			// TODO: If the referenced tag doesn't exist, what's the correct reaction?
+			if tag, exists := repo.Tags[params.Tag]; exists {
+				newImage := repoName + ":" + tag
+				if newImage != container.Image {
+					container.Image = newImage
+					dirty = true
+				}
 			}
 		}
 	}
