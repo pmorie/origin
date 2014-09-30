@@ -4,6 +4,9 @@ set -e
 
 SUITE_DIR=$(ls $(dirname $0)/deploy-suite/*.sh)
 
+SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PATH=${SCRIPT_PATH}/../_output/go/bin:$PATH
+
 # Start openshift
 openshift start &
 OPENSHIFT_PID=$!
