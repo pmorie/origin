@@ -52,9 +52,9 @@ type DeploymentTriggerPolicy struct {
 }
 
 type DeploymentTriggerImageChangeParams struct {
-	RepositoryName string `json:"repositoryName,omitempty" yaml:"repositoryName,omitempty"`
-	Tag            string `json:"tag,omitempty" yaml:"tag,omitempty"`
-	ImageName      string `json:"imageName,omitempty" yaml:"imageName,omitempty"`
+	ContainerNames []string `json:"containerNames,omitempty" yaml:"containerNames,omitempty"`
+	RepositoryName string   `json:"repositoryName,omitempty" yaml:"repositoryName,omitempty"`
+	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`
 }
 
 type DeploymentTriggerType string

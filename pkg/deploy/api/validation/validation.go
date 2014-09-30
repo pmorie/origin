@@ -71,8 +71,8 @@ func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangePar
 		result = append(result, errors.NewFieldRequired("RepositoryName", ""))
 	}
 
-	if len(params.ImageName) == 0 {
-		result = append(result, errors.NewFieldRequired("ImageName", ""))
+	if len(params.ContainerNames) == 0 {
+		result = append(result, errors.NewFieldRequired("ContainerNames", ""))
 	}
 
 	return result
