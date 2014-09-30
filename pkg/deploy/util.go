@@ -3,6 +3,7 @@ package deploy
 import (
 	"fmt"
 	"hash/adler32"
+	"strconv"
 	"strings"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -11,7 +12,7 @@ import (
 )
 
 func LatestDeploymentIDForConfig(config *deployapi.DeploymentConfig) string {
-	return config.ID + "-" + string(config.LatestVersion)
+	return config.ID + "-" + strconv.Itoa(config.LatestVersion)
 }
 
 // Returns the image repositories names a config has triggers registered for
