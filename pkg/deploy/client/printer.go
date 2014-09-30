@@ -3,8 +3,10 @@ package client
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubecfg"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/openshift/origin/pkg/deploy/api"
 )
 
@@ -35,7 +37,13 @@ func printDeploymentList(list *api.DeploymentList, w io.Writer) error {
 }
 
 func printDeploymentConfig(dc *api.DeploymentConfig, w io.Writer) error {
-	_, err := fmt.Fprintf(w, "%s\t%s\n", dc.ID, dc.Triggers)
+	triggers := util.StringSet{}
+	for _, trigger := range dc.Triggers {
+		triggers.Insert(string(trigger.Type))
+	}
+	tStr := strings.Join(triggers.List(), ", ")
+
+	_, err := fmt.Fprintf(w, "%s\t%s\n", dc.ID, tStr)
 	return err
 }
 
