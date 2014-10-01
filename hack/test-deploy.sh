@@ -9,7 +9,7 @@ set -e
 
 # use a configured ip address for containers that are not on the localhost (aka vagrant)
 # TODO: ensure openshift and kubernetes are started with the correct ip and commands work in vagrant
-IP_ADDRESS=${1:-127.0.0.1}
+LISTEN_ADDR=${1:-127.0.0.1:8080}
 # option to leave openshift up after testing in case you need to query it after the tests
 LEAVE_UP=${2:-0}
 
@@ -17,6 +17,8 @@ TEST_SUITES=$(ls $(dirname $0)/deploy-suite/*.sh)
 
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 FIXTURE_PATH=${SCRIPT_PATH}/deploy-suite/fixtures
+ETCD_DATA_DIR=$(mktemp -d /tmp/openshift.local.etcd.XXXX)
+VOLUME_DIR=$(mktemp -d /tmp/openshift.local.volumes.XXXX)
 
 # Add openshift to the path
 PATH=${SCRIPT_PATH}/../_output/go/bin:$PATH
@@ -43,17 +45,18 @@ source ${SCRIPT_PATH}/util.sh
 
 
 #1. start openshift
-openshift start &
+openshift start --volumeDir=$VOLUME_DIR --etcdDir=$ETCD_DATA_DIR --listenAddr=$LISTEN_ADDR 1>&2 &
 OPENSHIFT_PID=$!
 
 # Wait for server to start. Not sure if this is actually working
-wait_for_url "http://${IP_ADDRESS}:8080/healthz" "apiserver: "
+wait_for_url "http://${LISTEN_ADDR}/healthz" "apiserver: "
 
 #2. apply bootstrap config
 #  a. registry service and pod
 #  b. image repository records
 openshift kube apply -c ${FIXTURE_PATH}/bootstrap-config.json
 
+exit
 # TODO: how to verify it is up and ready (with list pods status?)
 
 #3. tag openshift/hello-openshift into the registry
@@ -65,7 +68,7 @@ docker push localhost:5000/ncdc/openshift-registry
 #5. service & deployment config - see bootstrap & manual.json
 
 #TODO exiting here for testing purposes to ensure docker items are good
-exit
+
 
 #############################
 # WIP: RUNNING THE TESTS - STILL WORKING ON GETTING BOOTSTRAP UP
