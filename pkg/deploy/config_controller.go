@@ -86,6 +86,10 @@ func (c *DeploymentConfigController) handle(config *deployapi.DeploymentConfig) 
 }
 
 func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentConfig) (bool, error) {
+	if config.LatestVersion == 0 {
+		return false, nil
+	}
+
 	deployment, err := c.latestDeploymentForConfig(config)
 	if err != nil {
 		if IsNotFoundError(err) {
