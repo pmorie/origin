@@ -9,6 +9,24 @@ import (
 	"testing"
 )
 
+func basicPodTemplate() kubeapi.PodTemplate {
+	return kubeapi.PodTemplate{
+		DesiredState: kubeapi.PodState{
+			Manifest: kubeapi.ContainerManifest{
+				Containers: []kubeapi.Container{
+					{
+						Name:  "container1",
+						Image: "registry:8080/repo1:ref1",
+					},
+					{
+						Name:  "container2",
+						Image: "registry:8080/repo1:ref2",
+					},
+				},
+			},
+		},
+	}
+}
 func basicDeploymentConfig() *deployapi.DeploymentConfig {
 	return &deployapi.DeploymentConfig{
 		JSONBase:      kubeapi.JSONBase{ID: "deploy1"},
@@ -27,28 +45,14 @@ func basicDeploymentConfig() *deployapi.DeploymentConfig {
 		},
 		Template: deployapi.DeploymentTemplate{
 			ControllerTemplate: kubeapi.ReplicationControllerState{
-				PodTemplate: kubeapi.PodTemplate{
-					DesiredState: kubeapi.PodState{
-						Manifest: kubeapi.ContainerManifest{
-							Containers: []kubeapi.Container{
-								{
-									Name:  "container1",
-									Image: "registry:8080/repo1:ref1",
-								},
-								{
-									Name:  "container2",
-									Image: "registry:8080/repo1:ref2",
-								},
-							},
-						},
-					},
-				},
+				PodTemplate: basicPodTemplate(),
 			},
 		},
 	}
 }
 
 func TestGenerateFromMissingDeploymentConfig(t *testing.T) {
+	deploymentRegistry := deploytest.NewDeploymentRegistry()
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
@@ -56,7 +60,7 @@ func TestGenerateFromMissingDeploymentConfig(t *testing.T) {
 		Items: []imageapi.ImageRepository{},
 	}
 
-	generator := NewDeploymentConfigGenerator(deploymentConfigRegistry, imageRepoRegistry)
+	generator := NewDeploymentConfigGenerator(deploymentRegistry, deploymentConfigRegistry, imageRepoRegistry)
 
 	config, err := generator.Generate("1234")
 
@@ -69,17 +73,33 @@ func TestGenerateFromMissingDeploymentConfig(t *testing.T) {
 	}
 }
 
-func TestGenerateFromConfigWithNoRepoReferences(t *testing.T) {
+func TestGenerateFromConfigWithoutTagChange(t *testing.T) {
+	deploymentRegistry := deploytest.NewDeploymentRegistry()
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
 	imageRepoRegistry.ImageRepositories = &imageapi.ImageRepositoryList{
-		Items: []imageapi.ImageRepository{},
+		Items: []imageapi.ImageRepository{
+			{
+				JSONBase:              kubeapi.JSONBase{ID: "imageRepo1"},
+				DockerImageRepository: "registry:8080/repo1",
+				Tags: map[string]string{
+					"tag1": "ref1",
+				},
+			},
+		},
 	}
 
 	deploymentConfigRegistry.DeploymentConfig = basicDeploymentConfig()
 
-	generator := NewDeploymentConfigGenerator(deploymentConfigRegistry, imageRepoRegistry)
+	// use a deployment which matches the config
+	deploymentRegistry.Deployment = &deployapi.Deployment{
+		ControllerTemplate: kubeapi.ReplicationControllerState{
+			PodTemplate: basicPodTemplate(),
+		},
+	}
+
+	generator := NewDeploymentConfigGenerator(deploymentRegistry, deploymentConfigRegistry, imageRepoRegistry)
 
 	config, err := generator.Generate("deploy1")
 
@@ -96,7 +116,36 @@ func TestGenerateFromConfigWithNoRepoReferences(t *testing.T) {
 	}
 }
 
+func TestGenerateFromConfigWithNoDeployment(t *testing.T) {
+	deploymentRegistry := deploytest.NewDeploymentRegistry()
+	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
+	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
+
+	imageRepoRegistry.ImageRepositories = &imageapi.ImageRepositoryList{
+		Items: []imageapi.ImageRepository{},
+	}
+
+	deploymentConfigRegistry.DeploymentConfig = basicDeploymentConfig()
+
+	generator := NewDeploymentConfigGenerator(deploymentRegistry, deploymentConfigRegistry, imageRepoRegistry)
+
+	config, err := generator.Generate("deploy2")
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if config == nil {
+		t.Fatalf("Expected non-nil config")
+	}
+
+	if config.LatestVersion != 1 {
+		t.Fatalf("Expected config LatestVersion=1, got %d", config.LatestVersion)
+	}
+}
+
 func TestGenerateFromConfigWithUpdatedImageRef(t *testing.T) {
+	deploymentRegistry := deploytest.NewDeploymentRegistry()
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
@@ -110,9 +159,15 @@ func TestGenerateFromConfigWithUpdatedImageRef(t *testing.T) {
 
 	deploymentConfigRegistry.DeploymentConfig = basicDeploymentConfig()
 
-	generator := NewDeploymentConfigGenerator(deploymentConfigRegistry, imageRepoRegistry)
+	deploymentRegistry.Deployment = &deployapi.Deployment{
+		ControllerTemplate: kubeapi.ReplicationControllerState{
+			PodTemplate: basicPodTemplate(),
+		},
+	}
 
-	config, err := generator.Generate("deploy1")
+	generator := NewDeploymentConfigGenerator(deploymentRegistry, deploymentConfigRegistry, imageRepoRegistry)
+
+	config, err := generator.Generate("deploy10")
 
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
