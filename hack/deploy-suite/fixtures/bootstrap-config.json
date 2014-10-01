@@ -5,46 +5,6 @@
     "id": "docker-registry-config",
     "items": [
         {
-            "apiVersion": "v1beta1",
-            "containerPort": 0,
-            "creationTimestamp": null,
-            "id": "registryservice",
-            "kind": "Service",
-            "port": 5000,
-            "selector": {
-                "name": "registryPod"
-            }
-        },
-        {
-            "kind": "Pod",
-            "version": "v1beta1",
-            "desiredState": {
-                "manifest": {
-                    "version": "v1beta1",
-                    "containers": [{
-                        "name": "docker-registry",
-                        "image": "ncdc/openshift-registry",
-                        "volumeMounts": [{
-                            "name": "data",
-                            "mountPath": "/tmp/registry"
-                        }],
-                        "ports": [{
-                            "containerPort": 5000
-                        }]
-                    }],
-                    "volumes": [{
-                        "name": "data",
-                        "source": {
-                            "emptyDir": true
-                        }
-                    }]
-                }
-            },
-            "labels": {
-                "name": "docker-registry"
-            }
-        },
-        {
             "id": "integrationTestRepository",
             "kind": "ImageRepository",
             "apiVersion": "v1beta1",
