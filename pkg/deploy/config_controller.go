@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
@@ -70,7 +69,7 @@ func (c *DeploymentConfigController) handle(config *deployapi.DeploymentConfig) 
 	deploy, err := c.shouldDeploy(config)
 	if err != nil {
 		// TODO: better error handling
-		glog.Errorf("Error determining whether to redeploy deploymentConfig %v: %v", config.ID, err)
+		glog.Errorf("Error determining whether to redeploy deploymentConfig %v: %#v", config.ID, err)
 		return err
 	}
 
@@ -89,7 +88,7 @@ func (c *DeploymentConfigController) handle(config *deployapi.DeploymentConfig) 
 func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentConfig) (bool, error) {
 	deployment, err := c.latestDeploymentForConfig(config)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if IsNotFoundError(err) {
 			return true, nil
 		} else {
 			return false, err
