@@ -1,0 +1,5 @@
+#!/bin/bash -eu
+
+source $(dirname $0)/config-go.sh
+
+exec cgdb --args $OS_TARGET/bin/openshift $@
