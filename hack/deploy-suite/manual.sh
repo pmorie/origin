@@ -5,7 +5,9 @@
 #
 
 # Exit on error
-set -e
+set -o errexit
+set -o nounset
+set -o pipefail
 
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 FIXTURE_PATH=${SCRIPT_PATH}/deploy-suite/fixtures
