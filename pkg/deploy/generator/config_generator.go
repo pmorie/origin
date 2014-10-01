@@ -2,9 +2,12 @@ package generator
 
 import (
 	"fmt"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
 	deploy "github.com/openshift/origin/pkg/deploy"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployreg "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfig "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	imagerepo "github.com/openshift/origin/pkg/image/registry/imagerepository"
 )
@@ -14,12 +17,15 @@ type DeploymentConfigGenerator interface {
 }
 
 type deploymentConfigGenerator struct {
+	deploymentRegistry   deployreg.Registry
 	deployConfigRegistry deployconfig.Registry
 	imageRepoRegistry    imagerepo.Registry
 }
 
-func NewDeploymentConfigGenerator(deployConfigRegistry deployconfig.Registry, imageRepoRegistry imagerepo.Registry) DeploymentConfigGenerator {
+func NewDeploymentConfigGenerator(deploymentRegistry deployreg.Registry,
+	deployConfigRegistry deployconfig.Registry, imageRepoRegistry imagerepo.Registry) DeploymentConfigGenerator {
 	return &deploymentConfigGenerator{
+		deploymentRegistry:   deploymentRegistry,
 		deployConfigRegistry: deployConfigRegistry,
 		imageRepoRegistry:    imageRepoRegistry,
 	}
@@ -28,18 +34,31 @@ func NewDeploymentConfigGenerator(deployConfigRegistry deployconfig.Registry, im
 func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deployapi.DeploymentConfig, error) {
 	glog.Infof("Generating new deployment config from deploymentConfig %v", deploymentConfigID)
 
-	config, err := g.deployConfigRegistry.GetDeploymentConfig(deploymentConfigID)
-	if err != nil {
+	var (
+		deploymentConfig *deployapi.DeploymentConfig
+		deployment       *deployapi.Deployment
+		err              error
+	)
+
+	if deploymentConfig, err = g.deployConfigRegistry.GetDeploymentConfig(deploymentConfigID); err != nil {
 		return nil, err
 	}
 
-	if config == nil {
+	if deploymentConfig == nil {
 		return nil, fmt.Errorf("No deployment config returned with id %v", deploymentConfigID)
 	}
 
-	dirty := false
-	for _, repoName := range deploy.ReferencedRepos(config).List() {
-		params := deploy.ParamsForImageChangeTrigger(config, repoName)
+	deploymentID := deploy.LatestDeploymentIDForConfig(deploymentConfig)
+	if deployment, err = g.deploymentRegistry.GetDeployment(deploymentID); err != nil {
+		if !errors.IsNotFound(err) {
+			return nil, err
+		}
+	}
+
+	configPodTemplate := deploymentConfig.Template.ControllerTemplate.PodTemplate
+
+	for _, repoName := range deploy.ReferencedRepos(deploymentConfig).List() {
+		params := deploy.ParamsForImageChangeTrigger(deploymentConfig, repoName)
 		repo, repoErr := g.imageRepoRegistry.GetImageRepository(repoName)
 
 		if repoErr != nil {
@@ -60,31 +79,26 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		}
 		newImage := repo.DockerImageRepository + ":" + tag
 
-		for i, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
-			match := false
-			for _, containerNameParam := range params.ContainerNames {
-				if containerNameParam == container.Name {
-					match = true
-					break
-				}
-			}
-
-			if !match {
+		containersToCheck := util.NewStringSet(params.ContainerNames...)
+		for i, container := range configPodTemplate.DesiredState.Manifest.Containers {
+			if !containersToCheck.Has(container.Name) {
 				continue
 			}
 
 			// TODO: If we grow beyond this single mutation, diffing hashes of
 			// a clone of the original config vs the mutation would be more generic.
 			if newImage != container.Image {
-				config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[i].Image = newImage
-				dirty = true
+				configPodTemplate.DesiredState.Manifest.Containers[i].Image = newImage
 			}
 		}
 	}
 
-	if dirty {
-		config.LatestVersion += 1
+	if deployment == nil {
+		// TODO: Is this a safe assumption?
+		deploymentConfig.LatestVersion = 1
+	} else if !deploy.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
+		deploymentConfig.LatestVersion += 1
 	}
 
-	return config, nil
+	return deploymentConfig, nil
 }
