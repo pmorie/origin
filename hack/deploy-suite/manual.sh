@@ -8,7 +8,7 @@
 set -e
 
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-CONFIG_FILE=${SCRIPT_PATH}/manual.json
+FIXTURE_PATH=${SCRIPT_PATH}/deploy-suite/fixtures
 EXPECTED_ID="frontend-config3"
 TEMP_CONFIG_FILE_NAME="temp_deploy_config.json"
 
@@ -26,7 +26,7 @@ function validate() {
 trap "teardown" EXIT
 
 # post the deployment
-openshift kube create deploymentConfigs -c ${CONFIG_FILE}
+openshift kube create deploymentConfigs -c ${FIXTURE_PATH}/manual.json
 
 # verify the config was created and has the correct trigger
 DEPLOY_CONFIG=$(openshift kube --template="{{.ID}}" get deploymentConfigs/${EXPECTED_ID} | tr -d ' ')
