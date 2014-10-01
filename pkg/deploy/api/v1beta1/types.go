@@ -1,7 +1,7 @@
 package v1beta1
 
 import (
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	api "github.com/GoogleCloudPlatform/kubernetes/pkg/api/v1beta1"
 )
 
 // CustomPodDeploymentStrategy describes a deployment carried out by a custom pod.

@@ -2,7 +2,6 @@ package generator
 
 import (
 	"fmt"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
 	deploy "github.com/openshift/origin/pkg/deploy"
@@ -50,7 +49,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 
 	deploymentID := deploy.LatestDeploymentIDForConfig(deploymentConfig)
 	if deployment, err = g.deploymentRegistry.GetDeployment(deploymentID); err != nil {
-		if !errors.IsNotFound(err) {
+		if !deploy.IsNotFoundError(err) {
 			return nil, err
 		}
 	}
@@ -95,6 +94,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 
 	if deployment == nil {
 		// TODO: Is this a safe assumption?
+		glog.Infof("Setting LatestVersion=1 due to absent deployment for config %s", deploymentConfigID)
 		deploymentConfig.LatestVersion = 1
 	} else if !deploy.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
 		deploymentConfig.LatestVersion += 1
