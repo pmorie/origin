@@ -1,5 +1,5 @@
 {
-    "id":"frontend-config3",
+    "id":"hello-deployment-config",
     "kind":"DeploymentConfig",
     "apiVersion":"v1beta1",
     "triggers":[
@@ -11,9 +11,9 @@
             "auto": true,
             "imageChangeParams": {
                 "containerNames":[
-                    "php-redis"
+                    "hello-openshift"
                 ],
-                "repositoryName": "127.0.0.1:5000/php-redis",
+                "repositoryName": "127.0.0.1:5000/openshift/hello-openshift",
                 "tag": "latest"
             }
         },
@@ -32,34 +32,21 @@
         "controllerTemplate":{
             "replicas":1,
             "replicaSelector":{
-                "name":"frontend"
+                "name":"hello-openshift"
             },
             "podTemplate":{
                 "desiredState":{
                     "manifest":{
                         "version":"v1beta1",
-                        "id":"frontendController",
+                        "id":"hello-openshift",
                         "containers":[
                             {
-                                "name":"php-redis",
-                                "image":"brendanburns/php-redis",
-                                "env":[
-                                    {
-                                        "name":"ADMIN_USERNAME",
-                                        "value":"admin"
-                                    },
-                                    {
-                                        "name":"ADMIN_PASSWORD",
-                                        "value":"secret"
-                                    },
-                                    {
-                                        "name":"REDIS_PASSWORD",
-                                        "value":"secret"
-                                    }
-                                ],
+                                "name":"hello-openshift",
+                                "image":"openshift/hello-openshift",
+                                "env":[],
                                 "ports":[
                                     {
-                                        "containerPort":80
+                                        "containerPort":8080
                                     }
                                 ]
                             }
@@ -67,7 +54,7 @@
                     }
                 },
                 "labels":{
-                    "name":"frontend"
+                    "name":"hello-openshift"
                 }
             }
         }

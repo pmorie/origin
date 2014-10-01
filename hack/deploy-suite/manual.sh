@@ -11,7 +11,7 @@ set -o pipefail
 
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 FIXTURE_PATH=${SCRIPT_PATH}/deploy-suite/fixtures
-EXPECTED_ID="frontend-config3"
+EXPECTED_ID="hello-deployment-config"
 TEMP_CONFIG_FILE_NAME="temp_deploy_config.json"
 
 function teardown() {
