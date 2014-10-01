@@ -5,6 +5,21 @@
     "triggers":[
         {
             "type": "manual"
+        },
+        {
+            "type": "image-change",
+            "auto": true,
+            "imageChangeParams": {
+                "containerNames":[
+                    "php-redis"
+                ],
+                "repositoryName": "127.0.0.1:5000/php-redis",
+                "tag": "latest"
+            }
+        },
+        {
+            "type": "config-change",
+            "auto": true,
         }
     ],
     "template":{
