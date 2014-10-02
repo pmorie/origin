@@ -9,7 +9,11 @@ set -e
 
 # use a configured ip address for containers that are not on the localhost (aka vagrant)
 # TODO: ensure openshift and kubernetes are started with the correct ip and commands work in vagrant
-LISTEN_IP=${1:-127.0.0.1}
+if [ -z "$1" ]; then
+    echo "listen IP argument is required"
+    exit 1
+fi
+LISTEN_IP="$1"
 LISTEN_PORT=${2:-8080}
 # option to leave openshift up after testing in case you need to query it after the tests
 LEAVE_UP=${3:-0}
@@ -32,7 +36,7 @@ openshift start --volumeDir=$VOLUME_DIR --etcdDir=$ETCD_DATA_DIR --listenAddr="$
 OPENSHIFT_PID=$!
 
 # Wait for server to start. Not sure if this is actually working
-wait_for_url "http://${LISTEN_IP}:${LISTEN_PORT}/healthz" "apiserver: "
+wait_for_url "http://${LISTEN_IP}:${LISTEN_PORT}/healthz" "waiting for apiserver: "
 
 #2. apply bootstrap config for image repository
 openshift kube -h ${LISTEN_IP}:${LISTEN_PORT} apply -c ${FIXTURE_PATH}/bootstrap-config.json
@@ -40,7 +44,7 @@ openshift kube -h ${LISTEN_IP}:${LISTEN_PORT} apply -c ${FIXTURE_PATH}/bootstrap
 # TODO: verify via list imageRepositories
 echo "setting up openshift docker registry"
 registry_id=$(docker run -d -p 5000:5000 -e OPENSHIFT_URL=http://${LISTEN_IP}:${LISTEN_PORT}/osapi/v1beta1 ncdc/openshift-registry)
-sleep 2
+wait_for_url "http://127.0.0.1:5000/v1/_ping" "waiting for registry: "
 
 docker tag openshift/hello-openshift 127.0.0.1:5000/openshift/hello-openshift
 docker push 127.0.0.1:5000/openshift/hello-openshift > /dev/null
@@ -67,7 +71,7 @@ function test-teardown() {
     kill ${OPENSHIFT_PID}
 
     docker stop ${registry_id}
-#    docker rm ${registry_id}
+    docker rm ${registry_id}
 }
 
 if [[ ${LEAVE_UP} -ne 1 ]]; then
