@@ -47,7 +47,9 @@ openshift kube update -h $OS_API deploymentConfigs/hello-deployment-config -c ${
 
 status=''
 for (( i=1 ; i<=5 ; i++ )) ; do
+  set +e
   status=$(openshift kube -h $OS_API --template="{{.State}}" get deployments/hello-deployment-config-1)
+  set -e
   echo "Deployment status: $status"
   if [[ "$status" == "complete" || "$status" == "failed" ]]; then
     break
