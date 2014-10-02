@@ -17,8 +17,14 @@ EXPECTED_ID="hello-deployment-config"
 TEMP_CONFIG_FILE_NAME="temp_deploy_config.json"
 
 function teardown() {
+  set +e
   openshift kube -h $OS_API delete deploymentConfigs/${EXPECTED_ID}
-  rm ${SCRIPT_PATH}/temp_deploy_config.json
+  replication_controller_id=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.ID}}{{end}}" list replicationControllers -l deploymentID=hello-deployment-config-1)
+  openshift kube -h $OS_API resize $replication_controller_id 0
+  openshift kube -h $OS_API delete replicationControllers/$replication_controller_id
+  openshift kube -h $OS_API delete deployments/${EXPECTED_ID}-1
+  rm -f ${SCRIPT_PATH}/temp_deploy_config.json
+  set -e
 }
 
 function validate() {
