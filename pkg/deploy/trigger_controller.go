@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"errors"
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
@@ -251,6 +252,11 @@ func (c *DeploymentTriggerController) regenerate(configID string) error {
 		return err
 	}
 
+	if newConfig == nil {
+		glog.Error("Generator returned nil")
+		return errors.New("Generator returned nil")
+	}
+
 	_, err = c.osClient.UpdateDeploymentConfig(newConfig)
 	if err != nil {
 		glog.Errorf("Error updating deploymentConfig %v", configID)
@@ -444,6 +450,7 @@ func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageR
 	id := repo.ID
 	glog.Infof("Handling triggers for imageRepository %v", id)
 	configs := c.imageRepoTriggers.configsForRepo(id)
+	glog.Infof("configs: %v", configs)
 	for _, configID := range configs.List() {
 		// TODO: handle not-in-cache error
 		config := c.configCache.cachedConfig(configID)
