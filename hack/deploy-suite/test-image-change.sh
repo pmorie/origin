@@ -18,13 +18,15 @@ EXPECTED_ID="hello-deployment-config"
 TEMP_CONFIG_FILE_NAME="temp_deploy_config.json"
 
 function teardown() {
+  echo "tearing down image change test"
   set +e
-  openshift kube -h $OS_API delete deploymentConfigs/${EXPECTED_ID}
+  openshift kube -h $OS_API delete deploymentConfigs/${EXPECTED_ID} > /dev/null
   replication_controller_id=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.ID}}{{end}}" list replicationControllers -l deploymentID=hello-deployment-config-1)
-  openshift kube -h $OS_API resize $replication_controller_id 0
-  openshift kube -h $OS_API delete replicationControllers/$replication_controller_id
-  openshift kube -h $OS_API delete deployments/${EXPECTED_ID}-1
+  openshift kube -h $OS_API resize $replication_controller_id 0 > /dev/null
+  openshift kube -h $OS_API delete replicationControllers/$replication_controller_id > /dev/null
+  openshift kube -h $OS_API delete deployments/${EXPECTED_ID}-1 > /dev/null
   rm -f ${SCRIPT_PATH}/temp_deploy_config.json
+  sleep 5
   set -e
 }
 
@@ -36,7 +38,7 @@ echo "posted deployment"
 
 # verify the config was created and has the correct trigger
 DEPLOY_CONFIG=$(openshift kube -h $OS_API --template="{{.ID}}" get deploymentConfigs/${EXPECTED_ID} | tr -d ' ')
-validate ${DEPLOY_CONFIG} ${EXPECTED_ID} "deployment config"
+assert_equals ${DEPLOY_CONFIG} ${EXPECTED_ID} "deployment config"
 #TODO: DEPLOY_CONFIG_TRIGGER=$(openshift kube --template="{{.Triggers}}" get deploymentConfigs/${EXPECTED_ID} | tr -d ' ')
 
 # get the config (on the generator) endpoint for generated config is /genDeploymentConfigs
@@ -49,8 +51,8 @@ openshift kube update -h $OS_API deploymentConfigs/hello-deployment-config -c ${
 assert_deployment_complete ${EXPECTED_ID}-1
 assert_at_least_one_replica ${EXPECTED_ID}-1
 
-docker tag openshift/hello-openshift-change localhost:5000/openshift/hello-openshift-change
-docker push localhost:5000/openshift/hello-openshift-change
+docker tag openshift/hello-openshift-changed localhost:5000/openshift/hello-openshift
+docker push localhost:5000/openshift/hello-openshift
 
 assert_zero_replicas $EXPECTED_ID-1
 assert_deployment_complete ${EXPECTED_ID}-2
