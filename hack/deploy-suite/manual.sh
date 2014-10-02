@@ -43,19 +43,36 @@ CONFIG=$(openshift kube -h $OS_API --json get genDeploymentConfigs/${EXPECTED_ID
 echo ${CONFIG} > ${SCRIPT_PATH}/${TEMP_CONFIG_FILE_NAME}
 openshift kube update -h $OS_API deploymentConfigs/hello-deployment-config -c ${SCRIPT_PATH}/${TEMP_CONFIG_FILE_NAME}
 
-count=5
+#http -b $OS_API/osapi/v1beta1/genDeploymentConfigs/$EXPECTED_ID 
+
 status=''
-while [ $count -gt 0 ]; do
-  count=count-1
-  status=$(openshift kube -h $OS_API --template="{{.Status}}" get deployments/hello-deployment-config-1)
+for (( i=1 ; i<=5 ; i++ )) ; do
+  status=$(openshift kube -h $OS_API --template="{{.State}}" get deployments/hello-deployment-config-1)
   echo "Deployment status: $status"
-  if [ status == "complete" ]; then
-  	break
+  if [[ "$status" == "complete" || "$status" == "failed" ]]; then
+    break
   fi
+  sleep 5
 done
 
-if [ "$status" -ne "complete" ]; then
-  exit 1
+if [ "$status" != "complete" ]; then
+  echo "Failed!"
+  exit 255
+fi
+
+replicas=0
+for (( i=1 ; i<=5 ; i++ )) ; do
+  replicas=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.CurrentState.Replicas}}{{end}}" list replicationControllers -l deploymentID=hello-deployment-config-1)
+  echo "ReplicationController replicas: $replicas"
+  if [ "$replicas" -gt 0 ]; then
+    break
+  fi
+  sleep 5
+done
+
+if [ $replicas -lt 1 ]; then
+  echo "Failed!"
+  exit 255
 fi
 
 exit 0

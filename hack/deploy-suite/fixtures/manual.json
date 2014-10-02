@@ -13,7 +13,7 @@
                 "containerNames":[
                     "hello-openshift"
                 ],
-                "repositoryName": "127.0.0.1:5000/openshift/hello-openshift",
+                "repositoryName": "localhost:5000/openshift/hello-openshift",
                 "tag": "latest"
             }
         },
@@ -26,7 +26,7 @@
         "strategy":{
             "type":"customPod",
             "customPod":{
-                "image":"127.0.0.1:5000/openshift/kube-deploy"
+                "image":"localhost:5000/openshift/kube-deploy"
             }
         },
         "controllerTemplate":{

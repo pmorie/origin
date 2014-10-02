@@ -39,7 +39,7 @@ openshift kube -h ${LISTEN_IP}:${LISTEN_PORT} apply -c ${FIXTURE_PATH}/bootstrap
 # TODO: verify via list imageRepositories
 
 registry_id=$(docker run -d -p 5000:5000 -e OPENSHIFT_URL=http://${LISTEN_IP}:${LISTEN_PORT}/osapi/v1beta1 ncdc/openshift-registry)
-sleep 10
+sleep 2
 
 docker tag openshift/hello-openshift 127.0.0.1:5000/openshift/hello-openshift
 docker push 127.0.0.1:5000/openshift/hello-openshift
