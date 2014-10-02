@@ -151,6 +151,11 @@ func (c *DeploymentConfigController) watchDeploymentConfigs() {
 				continue
 			}
 
+			if configEvent.Type == watch.Deleted {
+				glog.Infof("Ignoring delete for config %v", config.ID)
+				continue
+			}
+
 			glog.Infof("Received deploymentConfig watch for ID %v", config.ID)
 			c.handle(config)
 		}
