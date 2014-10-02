@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"errors"
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
@@ -219,7 +220,7 @@ func (c *DeploymentTriggerController) runController() {
 		}
 
 		if missed {
-			err = c.regenerateDeploymentConfig(&config)
+			err = c.regenerate(config.ID)
 			if err != nil {
 				continue
 			}
@@ -244,16 +245,21 @@ func (c *DeploymentTriggerController) runController() {
 	select {}
 }
 
-func (c *DeploymentTriggerController) regenerateDeploymentConfig(config *deployapi.DeploymentConfig) error {
-	newConfig, err := c.osClient.GenerateDeploymentConfig(config.ID)
+func (c *DeploymentTriggerController) regenerate(configID string) error {
+	newConfig, err := c.osClient.GenerateDeploymentConfig(configID)
 	if err != nil {
-		glog.Errorf("Error generating new version of deploymentConfig %v", config.ID)
+		glog.Errorf("Error generating new version of deploymentConfig %v", configID)
 		return err
+	}
+
+	if newConfig == nil {
+		glog.Error("Generator returned nil")
+		return errors.New("Generator returned nil")
 	}
 
 	_, err = c.osClient.UpdateDeploymentConfig(newConfig)
 	if err != nil {
-		glog.Errorf("Error updating deploymentConfig %v", config.ID)
+		glog.Errorf("Error updating deploymentConfig %v", configID)
 		return err
 	}
 
@@ -363,7 +369,11 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs() {
 			c.refreshTriggers(config)
 
 			if c.configTriggers.fire(config) {
-				// TODO: generate new deploymentConfig
+				err := c.regenerate(config.ID)
+				if err != nil {
+					glog.Infof("Error generating new deploymentConfig for id %v: %v", config.ID, err)
+					continue
+				}
 			}
 		}
 	}
@@ -429,6 +439,8 @@ func (c *DeploymentTriggerController) watchImageRepositories() {
 
 			if c.imageRepoTriggers.hasRegisteredTriggers(imageRepo) {
 				c.handleImageRepoWatch(imageRepo)
+			} else {
+				glog.Infof("Repository %v has no registered triggers, skipping")
 			}
 		}
 	}
@@ -436,10 +448,11 @@ func (c *DeploymentTriggerController) watchImageRepositories() {
 
 func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageRepository) {
 	id := repo.ID
-
+	glog.Infof("Handling triggers for imageRepository %v", id)
 	configs := c.imageRepoTriggers.configsForRepo(id)
-
+	glog.Infof("configs: %v", configs)
 	for _, configID := range configs.List() {
+		// TODO: handle not-in-cache error
 		config := c.configCache.cachedConfig(configID)
 		latestDeployment, err := c.latestDeploymentForConfig(&config)
 		if err != nil {
@@ -448,7 +461,11 @@ func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageR
 		}
 
 		if c.imageRepoTriggers.fire(repo, &config, latestDeployment) {
-			// TODO: generate new deployment config
+			err := c.regenerate(configID)
+			if err != nil {
+				glog.Infof("Error generating new deploymentConfig for id %v: %v", configID, err)
+				continue
+			}
 		}
 	}
 }
