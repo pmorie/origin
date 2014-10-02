@@ -43,7 +43,12 @@
                             {
                                 "name":"hello-openshift",
                                 "image":"openshift/hello-openshift",
-                                "env":[],
+                                "env":[
+                                    {
+                                        "name": "HELLO_ENV1",
+                                        "value": "HELLO_ENV1_VALUE"
+                                    }
+                                ],
                                 "ports":[
                                     {
                                         "containerPort":8080

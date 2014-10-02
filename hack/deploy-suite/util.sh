@@ -5,7 +5,9 @@ function assert_deployment_complete() {
   echo "waiting for deployment $id to complete"
   status=''
   for (( i=1 ; i<=50 ; i++ )) ; do
-    status=$(openshift kube -h $OS_API --template="{{.State}}" get deployments/$id)
+    set +e
+    status=$(openshift kube -h $OS_API --template="{{.State}}" get deployments/$id 2>/dev/null)
+    set -e
     echo "Deployment status: $status"
     if [[ "$status" == "complete" || "$status" == "failed" ]]; then
       break
@@ -24,7 +26,9 @@ function assert_at_least_one_replica() {
   echo "checking for at least one replica in replicationController $id"
   replicas=0
   for (( i=1 ; i<=50 ; i++ )) ; do
-    replicas=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.CurrentState.Replicas}}{{end}}" list replicationControllers -l deploymentID=$id)
+    set +e
+    replicas=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.CurrentState.Replicas}}{{end}}" list replicationControllers -l deploymentID=$id 2>/dev/null)
+    set -e
     echo "ReplicationController replicas: $replicas"
     if [ "$replicas" -gt 0 ]; then
       break
