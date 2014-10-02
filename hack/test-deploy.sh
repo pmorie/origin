@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 #
 # Starts an openshift all in one cluster and runs the deploy test suite, then shuts down
@@ -27,6 +27,7 @@ PATH=${SCRIPT_PATH}/../_output/go/bin:$PATH
 source ${SCRIPT_PATH}/util.sh
 
 #1. start openshift
+echo "starting openshift"
 openshift start --volumeDir=$VOLUME_DIR --etcdDir=$ETCD_DATA_DIR --listenAddr="${LISTEN_IP}:${LISTEN_PORT}" > /tmp/test-openshift.log 2>&1 &
 OPENSHIFT_PID=$!
 
@@ -37,15 +38,15 @@ wait_for_url "http://${LISTEN_IP}:${LISTEN_PORT}/healthz" "apiserver: "
 openshift kube -h ${LISTEN_IP}:${LISTEN_PORT} apply -c ${FIXTURE_PATH}/bootstrap-config.json
 
 # TODO: verify via list imageRepositories
-
+echo "setting up openshift docker registry"
 registry_id=$(docker run -d -p 5000:5000 -e OPENSHIFT_URL=http://${LISTEN_IP}:${LISTEN_PORT}/osapi/v1beta1 ncdc/openshift-registry)
 sleep 2
 
 docker tag openshift/hello-openshift 127.0.0.1:5000/openshift/hello-openshift
-docker push 127.0.0.1:5000/openshift/hello-openshift
+docker push 127.0.0.1:5000/openshift/hello-openshift > /dev/null
 
 docker tag openshift/kube-deploy 127.0.0.1:5000/openshift/kube-deploy
-docker push 127.0.0.1:5000/openshift/kube-deploy
+docker push 127.0.0.1:5000/openshift/kube-deploy > /dev/null
 
 #### here below goes into the manual test case
 #5. service & deployment config - see bootstrap & manual.json
@@ -75,8 +76,11 @@ fi
 
 # Run tests
 for test_file in ${TEST_SUITES}; do
+    echo "running test $test_file"
+    echo "----------------------------------------"
     "${test_file}" $LISTEN_IP:$LISTEN_PORT
     result="$?"
+    echo "----------------------------------------"
 
     if [[ "${result}" -eq "0" ]]; then
         echo "${test_file} returned ${result}; passed!"
