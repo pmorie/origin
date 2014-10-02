@@ -13,6 +13,7 @@ if [ -z "$1" ]; then
     echo "listen IP argument is required"
     exit 1
 fi
+
 LISTEN_IP="$1"
 LISTEN_PORT=${2:-8080}
 # option to leave openshift up after testing in case you need to query it after the tests
@@ -80,6 +81,13 @@ fi
 
 # Run tests
 for test_file in ${TEST_SUITES}; do
+    if [ -n "$TEST_PATTERN" ]; then
+        check=".*${TEST_PATTERN}.*"
+        if [[ ! "$test_file" =~ $check ]]; then
+            echo "skipping $test_file"
+            continue
+        fi
+    fi
     echo "running test $test_file"
     echo "----------------------------------------"
     "${test_file}" $LISTEN_IP:$LISTEN_PORT
