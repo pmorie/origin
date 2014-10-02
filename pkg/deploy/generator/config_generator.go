@@ -2,12 +2,16 @@ package generator
 
 import (
 	"fmt"
+
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
 	deploy "github.com/openshift/origin/pkg/deploy"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deployreg "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfig "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
+	imageapi "github.com/openshift/origin/pkg/image/api"
 	imagerepo "github.com/openshift/origin/pkg/image/registry/imagerepository"
 )
 
@@ -49,24 +53,20 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 
 	deploymentID := deploy.LatestDeploymentIDForConfig(deploymentConfig)
 	if deployment, err = g.deploymentRegistry.GetDeployment(deploymentID); err != nil {
-		if !deploy.IsNotFoundError(err) {
+		if !errors.IsNotFound(err) {
+			glog.Errorf("Error getting deployment: %#v", err)
 			return nil, err
 		}
 	}
 
 	configPodTemplate := deploymentConfig.Template.ControllerTemplate.PodTemplate
+	imageRepos := g.imageRepos()
 
 	for _, repoName := range deploy.ReferencedRepos(deploymentConfig).List() {
 		params := deploy.ParamsForImageChangeTrigger(deploymentConfig, repoName)
-		repo, repoErr := g.imageRepoRegistry.GetImageRepository(repoName)
-
-		if repoErr != nil {
-			return nil, repoErr
-		}
-
-		// TODO: If the repo a config references has disappeared, what's the correct reaction?
-		if repo == nil {
-			glog.Errorf("Received a nil ImageRepository for repoName=%s (potentially invalid DeploymentConfig state)", repoName)
+		repo, ok := imageRepos[params.RepositoryName]
+		if !ok {
+			glog.Errorf("Referenced an imageRepo without a record in OpenShift")
 			continue
 		}
 
@@ -101,4 +101,20 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	}
 
 	return deploymentConfig, nil
+}
+
+func (g *deploymentConfigGenerator) imageRepos() map[string]imageapi.ImageRepository {
+	repos := make(map[string]imageapi.ImageRepository)
+
+	imageRepos, err := g.imageRepoRegistry.ListImageRepositories(labels.Everything())
+	if err != nil {
+		glog.Errorf("Error listing imageRepositories: %#v", err)
+		return repos
+	}
+
+	for _, repo := range imageRepos.Items {
+		repos[repo.DockerImageRepository] = repo
+	}
+
+	return repos
 }
