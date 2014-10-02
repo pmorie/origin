@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 #
 # Starts an openshift all in one cluster and runs the deploy test suite, then shuts down
@@ -27,7 +27,7 @@ PATH=${SCRIPT_PATH}/../_output/go/bin:$PATH
 source ${SCRIPT_PATH}/util.sh
 
 #1. start openshift
-openshift start --volumeDir=$VOLUME_DIR --etcdDir=$ETCD_DATA_DIR --listenAddr="${LISTEN_IP}:${LISTEN_PORT}" 1>&2 &
+openshift start --volumeDir=$VOLUME_DIR --etcdDir=$ETCD_DATA_DIR --listenAddr="${LISTEN_IP}:${LISTEN_PORT}" > /tmp/test-openshift.log 2>&1 &
 OPENSHIFT_PID=$!
 
 # Wait for server to start. Not sure if this is actually working
@@ -38,21 +38,14 @@ openshift kube -h ${LISTEN_IP}:${LISTEN_PORT} apply -c ${FIXTURE_PATH}/bootstrap
 
 # TODO: verify via list imageRepositories
 
-#3. tag brendanburns/php-redis into the registry
-DOCKER_CONTAINER_NAME="integration-test-registry"
-docker pull brendanburns/php-redis
-docker run --name=${DOCKER_CONTAINER_NAME} -p 5000:5000 -e OPENSHIFT_URL=http://${LISTEN_IP}:${LISTEN_PORT}/osapi/v1beta1 ncdc/openshift-registry 1>&2 &
+registry_id=$(docker run -d -p 5000:5000 -e OPENSHIFT_URL=http://${LISTEN_IP}:${LISTEN_PORT}/osapi/v1beta1 ncdc/openshift-registry)
+sleep 10
 
-# wait a bit for the docker container to come up
-sleep 2
+docker tag openshift/hello-openshift 127.0.0.1:5000/openshift/hello-openshift
+docker push 127.0.0.1:5000/openshift/hello-openshift
 
-# get the image repo ip address from the running docker container (see assumption)
-IMAGE_REPO_IP=$(docker inspect -f "{{ .NetworkSettings.IPAddress }}" ${DOCKER_CONTAINER_NAME})
-
-docker tag brendanburns/php-redis ${LISTEN_IP}:5000/brendanburns/php-redis
-
-#4. push to the openshift image repo
-docker push ${LISTEN_IP}:5000/brendanburns/php-redis
+docker tag openshift/kube-deploy 127.0.0.1:5000/openshift/kube-deploy
+docker push 127.0.0.1:5000/openshift/kube-deploy
 
 #### here below goes into the manual test case
 #5. service & deployment config - see bootstrap & manual.json
@@ -72,21 +65,17 @@ function test-teardown() {
     echo "tearing down suite"
     kill ${OPENSHIFT_PID}
 
-    docker stop ${DOCKER_CONTAINER_NAME}
-    docker rm ${DOCKER_CONTAINER_NAME}
-    docker rmi ${IMAGE_REPO_IP}:5000/brendanburns/php-redis
+    docker stop ${registry_id}
+#    docker rm ${registry_id}
 }
 
 if [[ ${LEAVE_UP} -ne 1 ]]; then
   trap test-teardown EXIT
 fi
 
-#TODO exiting here for testing purposes to ensure docker items are good
-exit
-
 # Run tests
 for test_file in ${TEST_SUITES}; do
-    "${test_file}"
+    "${test_file}" $LISTEN_IP:$LISTEN_PORT
     result="$?"
 
     if [[ "${result}" -eq "0" ]]; then

@@ -8,7 +8,13 @@
             "id": "integrationTestRepository",
             "kind": "ImageRepository",
             "apiVersion": "v1beta1",
-            "dockerImageRepository": "localhost:5000/brendanburns/php-redis"
+            "dockerImageRepository": "localhost:5000/openshift/hello-openshift"
+        },
+        {
+            "id": "kubeDeploy",
+            "kind": "ImageRepository",
+            "apiVersion": "v1beta1",
+            "dockerImageRepository": "localhost:5000/openshift/kube-deploy"
         }
     ],
     "kind": "Config",

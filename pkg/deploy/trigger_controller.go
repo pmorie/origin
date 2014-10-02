@@ -46,6 +46,10 @@ type deploymentConfigTriggers struct {
 	util.StringSet
 }
 
+func newDeploymentConfigTriggers() deploymentConfigTriggers {
+	return deploymentConfigTriggers{util.StringSet{}}
+}
+
 func (t *deploymentConfigTriggers) fire(config *deployapi.DeploymentConfig) bool {
 	return t.Has(config.ID)
 }
@@ -94,11 +98,19 @@ func newImageRepoTriggers() imageRepoTriggers {
 
 func (t *imageRepoTriggers) insert(configID string, repoIDs util.StringSet) {
 	for _, repoID := range repoIDs.List() {
-		configs := t.reposToConfigs[repoID]
+		configs, ok := t.reposToConfigs[repoID]
+		if !ok {
+			configs = util.StringSet{}
+		}
 		configs.Insert(configID)
+		t.reposToConfigs[repoID] = configs
 
-		repos := t.configsToRepos[configID]
+		repos, ok := t.configsToRepos[configID]
+		if !ok {
+			repos = util.StringSet{}
+		}
 		repos.Insert(repoID)
+		t.configsToRepos[configID] = repos
 	}
 }
 
@@ -171,6 +183,7 @@ func NewDeploymentTriggerController(osClient osclient.Interface) *DeploymentTrig
 		imageRepoCache:    newImageRepoCache(),
 		imageRepoTriggers: newImageRepoTriggers(),
 		configCache:       newDeploymentConfigCache(),
+		configTriggers:    newDeploymentConfigTriggers(),
 	}
 }
 
