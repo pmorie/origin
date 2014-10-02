@@ -253,7 +253,7 @@ func (c *DeploymentTriggerController) regenerate(configID string) error {
 	}
 
 	if newConfig == nil {
-		glog.Error("Generator returned nil")
+		glog.Errorf("Generator returned nil for config %s", configID)
 		return errors.New("Generator returned nil")
 	}
 

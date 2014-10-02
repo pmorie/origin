@@ -74,6 +74,7 @@ func (c *DeploymentConfigController) handle(config *deployapi.DeploymentConfig) 
 	}
 
 	if !deploy {
+		glog.Infof("Won't deploy from config %s", config.ID)
 		return nil
 	}
 
@@ -87,14 +88,17 @@ func (c *DeploymentConfigController) handle(config *deployapi.DeploymentConfig) 
 
 func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentConfig) (bool, error) {
 	if config.LatestVersion == 0 {
+		glog.Infof("Shouldn't deploy config %s with LatestVersion=0", config.ID)
 		return false, nil
 	}
 
 	deployment, err := c.latestDeploymentForConfig(config)
 	if err != nil {
 		if IsNotFoundError(err) {
+			glog.Infof("Should deploy config %s because there's no latest deployment", config.ID)
 			return true, nil
 		} else {
+			glog.Info("Shouldn't deploy config %s because of an error looking up latest deployment", config.ID)
 			return false, err
 		}
 	}
@@ -118,6 +122,7 @@ func (c *DeploymentConfigController) deploy(config *deployapi.DeploymentConfig) 
 		ControllerTemplate: config.Template.ControllerTemplate,
 	}
 
+	glog.Infof("Creating new deployment from config %s", config.ID)
 	_, err := c.osClient.CreateDeployment(deployment)
 
 	return err
