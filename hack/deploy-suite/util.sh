@@ -37,3 +37,10 @@ function assert_at_least_one_replica() {
     exit 255
   fi
 }
+
+function assert_equals() {
+  if [ "${1}" != "${2}" ]; then
+    echo "FAILURE: Expected a ${3} with ${2} but found {$1}"
+    exit 1
+  fi
+}
