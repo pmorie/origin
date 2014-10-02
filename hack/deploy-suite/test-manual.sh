@@ -30,22 +30,15 @@ function teardown() {
   set -e
 }
 
-function validate() {
-  if [ "${1}" != "${2}" ]; then
-    echo "FAILURE: Expected a ${3} with ${2} but found {$1}"
-    exit 1
-  fi
-}
 trap "teardown" EXIT
 
 # post the deployment
 echo "creating deploymentConfig $EXPECTED_ID"
 openshift kube -h $OS_API create deploymentConfigs -c ${FIXTURE_PATH}/manual.json > /dev/null
 
-# verify the config was created and has the correct trigger
+# verify the config was created
 DEPLOY_CONFIG=$(openshift kube -h $OS_API --template="{{.ID}}" get deploymentConfigs/${EXPECTED_ID} | tr -d ' ')
-validate ${DEPLOY_CONFIG} ${EXPECTED_ID} "deployment config"
-#TODO: DEPLOY_CONFIG_TRIGGER=$(openshift kube --template="{{.Triggers}}" get deploymentConfigs/${EXPECTED_ID} | tr -d ' ')
+assert_equals ${DEPLOY_CONFIG} ${EXPECTED_ID} "deployment config"
 
 echo "generating new deploymentConfig for $EXPECTED_ID"
 # get the config (on the generator) endpoint for generated config is /genDeploymentConfigs
@@ -54,5 +47,6 @@ echo ${CONFIG} > ${SCRIPT_PATH}/${TEMP_CONFIG_FILE_NAME}
 echo "posting generated deploymentConfig for $EXPECTED_ID"
 openshift kube update -h $OS_API deploymentConfigs/hello-deployment-config -c ${SCRIPT_PATH}/${TEMP_CONFIG_FILE_NAME} > /dev/null
 
+sleep 5
 assert_deployment_complete ${EXPECTED_ID}-1
 assert_at_least_one_replica ${EXPECTED_ID}-1
