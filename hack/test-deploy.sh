@@ -14,7 +14,7 @@ LISTEN_PORT=${2:-8080}
 # option to leave openshift up after testing in case you need to query it after the tests
 LEAVE_UP=${3:-0}
 
-TEST_SUITES=$(ls $(dirname $0)/deploy-suite/*.sh)
+TEST_SUITES=$(ls $(dirname $0)/deploy-suite/test-*.sh)
 
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 FIXTURE_PATH=${SCRIPT_PATH}/deploy-suite/fixtures
