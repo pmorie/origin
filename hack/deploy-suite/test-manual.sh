@@ -27,6 +27,7 @@ function teardown() {
   openshift kube -h $OS_API delete replicationControllers/$replication_controller_id > /dev/null
   openshift kube -h $OS_API delete deployments/${EXPECTED_ID}-1 > /dev/null
   rm -f ${SCRIPT_PATH}/temp_deploy_config.json
+  sleep 5
   set -e
 }
 
