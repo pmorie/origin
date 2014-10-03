@@ -11,7 +11,7 @@ import (
 )
 
 var deploymentColumns = []string{"ID", "State"}
-var deploymentConfigColumns = []string{"ID", "Triggers"}
+var deploymentConfigColumns = []string{"ID", "Triggers", "LatestVersion"}
 
 // RegisterPrintHandlers registers human-readable printers for deploy types.
 func RegisterPrintHandlers(printer *kubecfg.HumanReadablePrinter) {
@@ -43,7 +43,7 @@ func printDeploymentConfig(dc *api.DeploymentConfig, w io.Writer) error {
 	}
 	tStr := strings.Join(triggers.List(), ", ")
 
-	_, err := fmt.Fprintf(w, "%s\t%s\n", dc.ID, tStr)
+	_, err := fmt.Fprintf(w, "%s\t%s\t%s\n", dc.ID, tStr, dc.LatestVersion)
 	return err
 }
 
