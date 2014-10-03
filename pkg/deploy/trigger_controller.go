@@ -377,7 +377,7 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs() {
 			c.refreshTriggers(config)
 			versionChanged := c.configCache.refresh(config)
 			if versionChanged {
-				glog.Infof("Ignoring deploymentConfig with for ID: %v because LatestVersion didn't change:", config.ID)
+				glog.Infof("Ignoring deploymentConfig watch for ID: %v because LatestVersion changed:", config.ID)
 				continue
 			}
 
@@ -464,7 +464,7 @@ func (c *DeploymentTriggerController) watchImageRepositories() {
 
 func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageRepository) {
 	id := repo.DockerImageRepository
-	glog.Infof("Handling triggers for imageRepository %v:", id)
+	glog.Infof("Handling triggers for imageRepository %#v:", repo)
 	configs := c.imageRepoTriggers.configsForRepo(id)
 	glog.Infof("configs: %v", configs)
 	for _, configID := range configs.List() {

@@ -6,6 +6,17 @@
         {
             "type": "manual"
         },
+        {
+            "type": "image-change",
+            "auto": true,
+            "imageChangeParams": {
+                "containerNames":[
+                    "hello-openshift"
+                ],
+                "repositoryName": "localhost:5000/openshift/hello-openshift",
+                "tag": "latest"
+            }
+        },
     ],
     "template":{
         "strategy":{
