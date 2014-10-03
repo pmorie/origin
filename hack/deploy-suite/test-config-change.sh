@@ -22,7 +22,7 @@ function teardown() {
   echo "tearing down manual test"
   set +e
   openshift kube -h $OS_API delete deploymentConfigs/${EXPECTED_ID} > /dev/null
-  replication_controller_id=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.ID}}{{end}}" list replicationControllers -l deploymentID=hello-deployment-config-1)
+  replication_controller_id=$(openshift kube -h $OS_API --template="{{with index .Items 0}}{{.ID}}{{end}}" list replicationControllers -l deploymentID=hello-deployment-config-2)
   openshift kube -h $OS_API resize $replication_controller_id 0 > /dev/null
   openshift kube -h $OS_API delete replicationControllers/$replication_controller_id > /dev/null
   openshift kube -h $OS_API delete deployments/${EXPECTED_ID}-1 > /dev/null
@@ -35,7 +35,7 @@ trap "teardown" EXIT
 
 # post the deployment
 echo "creating deploymentConfig $EXPECTED_ID"
-openshift kube -h $OS_API create deploymentConfigs -c ${FIXTURE_PATH}/manual.json > /dev/null
+openshift kube -h $OS_API create deploymentConfigs -c ${FIXTURE_PATH}/config-change.json > /dev/null
 
 # verify the config was created
 DEPLOY_CONFIG=$(openshift kube -h $OS_API --template="{{.ID}}" get deploymentConfigs/${EXPECTED_ID} | tr -d ' ')

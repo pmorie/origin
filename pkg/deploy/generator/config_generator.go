@@ -44,6 +44,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	)
 
 	if deploymentConfig, err = g.deployConfigRegistry.GetDeploymentConfig(deploymentConfigID); err != nil {
+		glog.Errorf("Error getting deploymentConfig for id %v", deploymentConfigID)
 		return nil, err
 	}
 
@@ -66,8 +67,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		params := deploy.ParamsForImageChangeTrigger(deploymentConfig, repoName)
 		repo, ok := imageRepos[params.RepositoryName]
 		if !ok {
-			glog.Errorf("Referenced an imageRepo without a record in OpenShift")
-			continue
+			return nil, fmt.Errorf("Referenced an imageRepo without a record in OpenShift")
 		}
 
 		// TODO: If the tag is missing, what's the correct reaction?
@@ -87,17 +87,23 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 			// TODO: If we grow beyond this single mutation, diffing hashes of
 			// a clone of the original config vs the mutation would be more generic.
 			if newImage != container.Image {
+				glog.Infof("Updating container %v to %v", container.Name, newImage)
 				configPodTemplate.DesiredState.Manifest.Containers[i].Image = newImage
 			}
 		}
 	}
 
 	if deployment == nil {
-		// TODO: Is this a safe assumption?
-		glog.Infof("Setting LatestVersion=1 due to absent deployment for config %s", deploymentConfigID)
-		deploymentConfig.LatestVersion = 1
+		if deploymentConfig.LatestVersion == 0 {
+			// TODO: Is this a safe assumption? -- NO
+			glog.Infof("Setting LatestVersion=1 due to absent deployment for config %s", deploymentConfigID)
+			deploymentConfig.LatestVersion = 1
+		} else {
+			glog.Info("Config %v: no latest deployment and LatestVersion != 0")
+		}
 	} else if !deploy.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
 		deploymentConfig.LatestVersion += 1
+		glog.Infof("Incrementing deploymentConfig %v LatestVersion: %v", deploymentConfigID, deploymentConfig.LatestVersion)
 	}
 
 	return deploymentConfig, nil

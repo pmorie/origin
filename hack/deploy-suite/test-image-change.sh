@@ -33,7 +33,7 @@ function teardown() {
 trap "teardown" EXIT
 
 # post the deployment
-openshift kube -h $OS_API create deploymentConfigs -c ${FIXTURE_PATH}/manual.json > /dev/null
+openshift kube -h $OS_API create deploymentConfigs -c ${FIXTURE_PATH}/image-change.json > /dev/null
 echo "posted deployment"
 
 # verify the config was created and has the correct trigger

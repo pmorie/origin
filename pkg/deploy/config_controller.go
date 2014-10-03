@@ -15,13 +15,17 @@ import (
 // A DeploymentConfigController is responsible for implementing the triggers registered by DeploymentConfigs
 // TODO: needs cache of some kind
 type DeploymentConfigController struct {
-	osClient          osclient.Interface
-	deployConfigWatch watch.Interface
+	osClient    osclient.Interface
+	configCache deploymentConfigCache
+	configWatch watch.Interface
 }
 
 // NewDeploymentConfigController creates a new DeploymentConfigController.
 func NewDeploymentConfigController(osClient osclient.Interface) *DeploymentConfigController {
-	return &DeploymentConfigController{osClient: osClient}
+	return &DeploymentConfigController{
+		osClient:    osClient,
+		configCache: newDeploymentConfigCache(),
+	}
 }
 
 func (c *DeploymentConfigController) Run(period time.Duration) {
@@ -132,13 +136,13 @@ func (c *DeploymentConfigController) subscribeToDeploymentConfigs() error {
 	glog.Info("Subscribing to deployment configs")
 	watch, err := c.osClient.WatchDeploymentConfigs(labels.Everything(), labels.Everything(), 0)
 	if err == nil {
-		c.deployConfigWatch = watch
+		c.configWatch = watch
 	}
 	return err
 }
 
 func (c *DeploymentConfigController) watchDeploymentConfigs() {
-	configChan := c.deployConfigWatch.ResultChan()
+	configChan := c.configWatch.ResultChan()
 
 	for {
 		select {
@@ -157,7 +161,14 @@ func (c *DeploymentConfigController) watchDeploymentConfigs() {
 			}
 
 			if configEvent.Type == watch.Deleted {
+				c.configCache.delete(config)
 				glog.Infof("Ignoring delete for config %v", config.ID)
+				continue
+			}
+
+			versionChanged := c.configCache.refresh(config)
+			if !versionChanged {
+				glog.Infof("Ignoring deploymentConfig watch for ID: %v because LatestVersion didn't change:", config.ID)
 				continue
 			}
 

@@ -287,8 +287,11 @@ func (c *Client) DeleteDeploymentConfig(id string) error {
 	return c.Delete().Path("deploymentConfigs").Path(id).Do().Error()
 }
 
-func (c *Client) GenerateDeploymentConfig(id string) (*deployapi.DeploymentConfig, error) {
-	return nil, nil
+// GenerateDeploymentConfig generates a new deploymentConfig for the given ID.
+func (c *Client) GenerateDeploymentConfig(id string) (result *deployapi.DeploymentConfig, err error) {
+	result = &deployapi.DeploymentConfig{}
+	err = c.Get().Path("genDeploymentConfigs").Path(id).Do().Into(result)
+	return
 }
 
 // ListDeployments takes a selector, and returns the list of deployments that match that selector

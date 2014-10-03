@@ -30,8 +30,12 @@ func (c *deploymentConfigCache) refreshList(configs *deployapi.DeploymentConfigL
 	}
 }
 
-func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) {
+// Returns true if the version changed
+func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) bool {
+	currentConfig, ok := c.store[config.ID]
 	c.store[config.ID] = *config
+
+	return !ok || config.LatestVersion != currentConfig.LatestVersion
 }
 
 func (c *deploymentConfigCache) delete(config *deployapi.DeploymentConfig) {
@@ -246,6 +250,11 @@ func (c *DeploymentTriggerController) runController() {
 }
 
 func (c *DeploymentTriggerController) regenerate(configID string) error {
+	config := c.configCache.cachedConfig(configID)
+	if config.LatestVersion == 0 {
+		glog.Infof("Ignoring regeneration for deploymentConfig %v because LatestVersion=0", configID)
+		return nil
+	}
 	newConfig, err := c.osClient.GenerateDeploymentConfig(configID)
 	if err != nil {
 		glog.Errorf("Error generating new version of deploymentConfig %v", configID)
@@ -365,10 +374,15 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs() {
 				continue
 			}
 
-			c.configCache.refresh(config)
 			c.refreshTriggers(config)
+			versionChanged := c.configCache.refresh(config)
+			if versionChanged {
+				glog.Infof("Ignoring deploymentConfig watch for ID: %v because LatestVersion changed:", config.ID)
+				continue
+			}
 
 			if c.configTriggers.fire(config) {
+				glog.Infof("regenerating deploymentConfig %v", config.ID)
 				err := c.regenerate(config.ID)
 				if err != nil {
 					glog.Infof("Error generating new deploymentConfig for id %v: %v", config.ID, err)
@@ -388,6 +402,8 @@ func (c *DeploymentTriggerController) refreshImageRepoChangeTriggers(config *dep
 	glog.Infof("Refreshing image repo triggers for deploymentConfig %v", config.ID)
 	configID := config.ID
 	currentRepoIDs := ReferencedRepos(config)
+
+	glog.Infof("deploymentConfig %v references imageRepositories %v", configID, currentRepoIDs)
 
 	// Refresh the image repo imageRepoTriggers
 	c.imageRepoTriggers.insert(configID, currentRepoIDs)
@@ -447,8 +463,8 @@ func (c *DeploymentTriggerController) watchImageRepositories() {
 }
 
 func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageRepository) {
-	id := repo.ID
-	glog.Infof("Handling triggers for imageRepository %v", id)
+	id := repo.DockerImageRepository
+	glog.Infof("Handling triggers for imageRepository %#v:", repo)
 	configs := c.imageRepoTriggers.configsForRepo(id)
 	glog.Infof("configs: %v", configs)
 	for _, configID := range configs.List() {
@@ -461,6 +477,7 @@ func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageR
 		}
 
 		if c.imageRepoTriggers.fire(repo, &config, latestDeployment) {
+			glog.Infof("Regeneratoring deploymentConfig %v", configID)
 			err := c.regenerate(configID)
 			if err != nil {
 				glog.Infof("Error generating new deploymentConfig for id %v: %v", configID, err)
