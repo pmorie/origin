@@ -94,9 +94,13 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	}
 
 	if deployment == nil {
-		// TODO: Is this a safe assumption?
-		glog.Infof("Setting LatestVersion=1 due to absent deployment for config %s", deploymentConfigID)
-		deploymentConfig.LatestVersion = 1
+		if deploymentConfig.LatestVersion == 0 {
+			// TODO: Is this a safe assumption? -- NO
+			glog.Infof("Setting LatestVersion=1 due to absent deployment for config %s", deploymentConfigID)
+			deploymentConfig.LatestVersion = 1
+		} else {
+			glog.Info("Config %v: no latest deployment and LatestVersion != 0")
+		}
 	} else if !deploy.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
 		deploymentConfig.LatestVersion += 1
 		glog.Infof("Incrementing deploymentConfig %v LatestVersion: %v", deploymentConfigID, deploymentConfig.LatestVersion)

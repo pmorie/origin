@@ -30,8 +30,12 @@ func (c *deploymentConfigCache) refreshList(configs *deployapi.DeploymentConfigL
 	}
 }
 
-func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) {
+// Returns true if the version changed
+func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) bool {
+	currentConfig, ok := c.store[config.ID]
 	c.store[config.ID] = *config
+
+	return !ok || config.LatestVersion != currentConfig.LatestVersion
 }
 
 func (c *deploymentConfigCache) delete(config *deployapi.DeploymentConfig) {
@@ -370,8 +374,12 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs() {
 				continue
 			}
 
-			c.configCache.refresh(config)
 			c.refreshTriggers(config)
+			versionChanged := c.configCache.refresh(config)
+			if versionChanged {
+				glog.Infof("Ignoring deploymentConfig with for ID: %v because LatestVersion didn't change:", config.ID)
+				continue
+			}
 
 			if c.configTriggers.fire(config) {
 				glog.Infof("regenerating deploymentConfig %v", config.ID)
