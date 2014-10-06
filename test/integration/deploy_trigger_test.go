@@ -51,7 +51,7 @@ func imageChangeDeploymentConfig() *deployapi.DeploymentConfig {
 					ContainerNames: []string{
 						"container-1",
 					},
-					RepositoryName: "registry:8080/openshift/test-image-repo",
+					RepositoryName: "registry:8080/openshift/test-image",
 					Tag:            "latest",
 				},
 			},
@@ -199,7 +199,7 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 
 	imageRepo := &imageapi.ImageRepository{
 		JSONBase:              kapi.JSONBase{ID: "test-image-repo"},
-		DockerImageRepository: "external-registry:8080/openshift/test-image",
+		DockerImageRepository: "registry:8080/openshift/test-image",
 		Tags: map[string]string{
 			"latest": "ref-1",
 		},
