@@ -1,17 +1,13 @@
+// +build integration,!no-etcd
+
 package integration
 
 import (
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"reflect"
 	"testing"
 	"time"
-
-	etcdconfig "github.com/coreos/etcd/config"
-	"github.com/coreos/etcd/etcd"
-	etcdclient "github.com/coreos/go-etcd/etcd"
 
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	klatest "github.com/GoogleCloudPlatform/kubernetes/pkg/api/latest"
@@ -39,7 +35,9 @@ import (
 	"github.com/openshift/origin/pkg/image/registry/imagerepositorymapping"
 )
 
-var testPodInfoGetter = &podInfoGetter{}
+func init() {
+	requireEtcd()
+}
 
 func imageChangeDeploymentConfig() *deployapi.DeploymentConfig {
 	return &deployapi.DeploymentConfig{
@@ -396,19 +394,15 @@ func (p *podInfoGetter) GetPodInfo(host, podID string) (kapi.PodInfo, error) {
 }
 
 type testOpenshift struct {
-	Client  *osclient.Client
-	server  *httptest.Server
-	etcd    *etcd.Etcd
-	etcdDir string
+	Client *osclient.Client
+	server *httptest.Server
 }
 
 func (o *testOpenshift) Shutdown() {
 	glog.Info("Shutting down test openshift")
 	o.server.CloseClientConnections()
 	o.server.Close()
-	o.etcd.Stop()
-
-	os.RemoveAll(o.etcdDir)
+	deleteAllEtcdKeys()
 }
 
 func NewTestOpenshift(t *testing.T) *testOpenshift {
@@ -416,34 +410,7 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 
 	openshift := &testOpenshift{}
 
-	// TODO: auto-assign a random port
-	etcdAddr := "localhost:5050"
-	etcdDir, err := ioutil.TempDir(os.TempDir(), "etcd")
-
-	if err != nil {
-		t.Fatalf("Couldn't create temp dir for etcd: %v", err)
-	}
-
-	openshift.etcdDir = etcdDir
-
-	etcdConfig := etcdconfig.New()
-	etcdConfig.Addr = etcdAddr
-	etcdConfig.BindAddr = etcdAddr
-	etcdConfig.DataDir = etcdDir
-	etcdConfig.Name = "openshift.local"
-
-	// initialize etcd
-	openshift.etcd = etcd.New(etcdConfig)
-	glog.Infof("Starting etcd at http://%s", etcdAddr)
-	go openshift.etcd.Run()
-
-	etcdClient := etcdclient.NewClient([]string{"http://" + etcdAddr})
-
-	for !etcdClient.SyncCluster() {
-		glog.Info("Waiting for etcd to become available...")
-		time.Sleep(1 * time.Second)
-	}
-
+	etcdClient := newEtcdClient()
 	etcdHelper, _ := master.NewEtcdHelper(etcdClient.GetCluster(), klatest.Version)
 
 	osMux := http.NewServeMux()
@@ -457,7 +424,7 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 	kmaster := master.New(&master.Config{
 		Client:             kubeClient,
 		EtcdHelper:         etcdHelper,
-		PodInfoGetter:      testPodInfoGetter,
+		PodInfoGetter:      &podInfoGetter{},
 		HealthCheckMinions: false,
 		Minions:            []string{"127.0.0.1"},
 	})
