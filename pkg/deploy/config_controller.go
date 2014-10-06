@@ -173,7 +173,9 @@ func (c *DeploymentConfigController) watchDeploymentConfigs() {
 			}
 
 			glog.Infof("Received deploymentConfig watch for ID %v", config.ID)
-			c.handle(config)
+			if err := c.handle(config); err != nil {
+				glog.Errorf("Error during watch handling of config ID %s: %v", config.ID, err)
+			}
 		}
 	}
 }

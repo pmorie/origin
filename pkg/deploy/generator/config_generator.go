@@ -67,7 +67,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		params := deploy.ParamsForImageChangeTrigger(deploymentConfig, repoName)
 		repo, ok := imageRepos[params.RepositoryName]
 		if !ok {
-			return nil, fmt.Errorf("Referenced an imageRepo without a record in OpenShift")
+			return nil, fmt.Errorf("Referenced an imageRepo '%s' without a record in OpenShift (known repos: %v)", params.RepositoryName, imageRepos)
 		}
 
 		// TODO: If the tag is missing, what's the correct reaction?
@@ -99,7 +99,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 			glog.Infof("Setting LatestVersion=1 due to absent deployment for config %s", deploymentConfigID)
 			deploymentConfig.LatestVersion = 1
 		} else {
-			glog.Info("Config %v: no latest deployment and LatestVersion != 0")
+			glog.Infof("Config %v: no latest deployment and LatestVersion != 0", deploymentConfigID)
 		}
 	} else if !deploy.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
 		deploymentConfig.LatestVersion += 1
