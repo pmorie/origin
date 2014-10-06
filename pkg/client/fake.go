@@ -172,6 +172,11 @@ func (c *Fake) DeleteDeployment(id string) error {
 	return nil
 }
 
+func (c *Fake) WatchDeployments(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	c.Actions = append(c.Actions, FakeAction{Action: "watch-deployments"})
+	return nil, nil
+}
+
 func (c *Fake) ListRoutes(selector labels.Selector) (*routeapi.RouteList, error) {
 	c.Actions = append(c.Actions, FakeAction{Action: "list-routes"})
 	return &routeapi.RouteList{}, nil

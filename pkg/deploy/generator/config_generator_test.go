@@ -38,7 +38,7 @@ func basicDeploymentConfig() *deployapi.DeploymentConfig {
 					ContainerNames: []string{
 						"container1",
 					},
-					RepositoryName: "imageRepo1",
+					RepositoryName: "registry:8080/repo1",
 					Tag:            "tag1",
 				},
 			},
@@ -51,14 +51,26 @@ func basicDeploymentConfig() *deployapi.DeploymentConfig {
 	}
 }
 
+func basicImageRepo() *imageapi.ImageRepositoryList {
+	return &imageapi.ImageRepositoryList{
+		Items: []imageapi.ImageRepository{
+			{
+				JSONBase:              kubeapi.JSONBase{ID: "imageRepo1"},
+				DockerImageRepository: "registry:8080/repo1",
+				Tags: map[string]string{
+					"tag1": "ref1",
+				},
+			},
+		},
+	}
+}
+
 func TestGenerateFromMissingDeploymentConfig(t *testing.T) {
 	deploymentRegistry := deploytest.NewDeploymentRegistry()
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
-	imageRepoRegistry.ImageRepositories = &imageapi.ImageRepositoryList{
-		Items: []imageapi.ImageRepository{},
-	}
+	imageRepoRegistry.ImageRepositories = basicImageRepo()
 
 	generator := NewDeploymentConfigGenerator(deploymentRegistry, deploymentConfigRegistry, imageRepoRegistry)
 
@@ -78,17 +90,7 @@ func TestGenerateFromConfigWithoutTagChange(t *testing.T) {
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
-	imageRepoRegistry.ImageRepositories = &imageapi.ImageRepositoryList{
-		Items: []imageapi.ImageRepository{
-			{
-				JSONBase:              kubeapi.JSONBase{ID: "imageRepo1"},
-				DockerImageRepository: "registry:8080/repo1",
-				Tags: map[string]string{
-					"tag1": "ref1",
-				},
-			},
-		},
-	}
+	imageRepoRegistry.ImageRepositories = basicImageRepo()
 
 	deploymentConfigRegistry.DeploymentConfig = basicDeploymentConfig()
 
@@ -121,9 +123,7 @@ func TestGenerateFromConfigWithNoDeployment(t *testing.T) {
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
-	imageRepoRegistry.ImageRepositories = &imageapi.ImageRepositoryList{
-		Items: []imageapi.ImageRepository{},
-	}
+	imageRepoRegistry.ImageRepositories = basicImageRepo()
 
 	deploymentConfigRegistry.DeploymentConfig = basicDeploymentConfig()
 
@@ -149,13 +149,7 @@ func TestGenerateFromConfigWithUpdatedImageRef(t *testing.T) {
 	deploymentConfigRegistry := deploytest.NewDeploymentConfigRegistry()
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
-	imageRepoRegistry.ImageRepository = &imageapi.ImageRepository{
-		JSONBase:              kubeapi.JSONBase{ID: "imageRepo1"},
-		DockerImageRepository: "registry:8080/repo1",
-		Tags: map[string]string{
-			"tag1": "ref3",
-		},
-	}
+	imageRepoRegistry.ImageRepositories = basicImageRepo()
 
 	deploymentConfigRegistry.DeploymentConfig = basicDeploymentConfig()
 

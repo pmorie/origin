@@ -29,10 +29,10 @@ func NewDeploymentConfigController(osClient osclient.Interface) *DeploymentConfi
 }
 
 func (c *DeploymentConfigController) Run(period time.Duration) {
-	go util.Forever(func() { c.runController() }, period)
+	go util.Forever(func() { c.SyncDeploymentConfigs() }, period)
 }
 
-func (c *DeploymentConfigController) runController() {
+func (c *DeploymentConfigController) SyncDeploymentConfigs() {
 	glog.Info("Bootstrapping deploymentConfig controller")
 
 	deploymentConfigs, err := c.osClient.ListDeploymentConfigs(labels.Everything())

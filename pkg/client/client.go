@@ -83,6 +83,7 @@ type DeploymentInterface interface {
 	CreateDeployment(*deployapi.Deployment) (*deployapi.Deployment, error)
 	UpdateDeployment(*deployapi.Deployment) (*deployapi.Deployment, error)
 	DeleteDeployment(string) error
+	WatchDeployments(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error)
 }
 
 // RouteInterface exposes methods on Route resources
@@ -325,6 +326,17 @@ func (c *Client) UpdateDeployment(deployment *deployapi.Deployment) (result *dep
 // DeleteDeployment deletes an existing replication deployment.
 func (c *Client) DeleteDeployment(id string) error {
 	return c.Delete().Path("deployments").Path(id).Do().Error()
+}
+
+// WatchDeployments returns a watch.Interface that watches the requested deployments.
+func (c *Client) WatchDeployments(field, label labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	return c.Get().
+		Path("watch").
+		Path("deployments").
+		UintParam("resourceVersion", resourceVersion).
+		SelectorParam("labels", label).
+		SelectorParam("fields", field).
+		Watch()
 }
 
 // ListRoutes takes a selector, and returns the list of routes that match that selector
