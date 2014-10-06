@@ -193,10 +193,10 @@ func NewDeploymentTriggerController(osClient osclient.Interface) *DeploymentTrig
 }
 
 func (c *DeploymentTriggerController) Run(period time.Duration) {
-	go util.Forever(func() { c.runController() }, period)
+	go util.Forever(func() { c.SyncDeploymentTriggers() }, period)
 }
 
-func (c *DeploymentTriggerController) runController() {
+func (c *DeploymentTriggerController) SyncDeploymentTriggers() {
 	glog.Info("Bootstrapping deployment trigger controller")
 
 	imageRepos, err := c.osClient.ListImageRepositories(labels.Everything())

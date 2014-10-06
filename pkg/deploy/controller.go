@@ -51,12 +51,12 @@ func NewDeploymentController(kubeClient kubeclient.Interface, osClient osclient.
 // Run begins watching and synchronizing deployment states.
 func (dc *DeploymentController) Run(period time.Duration) {
 	dc.syncTicker = time.Tick(period)
-	go util.Forever(func() { dc.synchronize() }, period)
+	go util.Forever(func() { dc.SyncDeployments() }, period)
 }
 
 // The main synchronization loop.  Iterates through all deployments and handles the current state
 // for each.
-func (dc *DeploymentController) synchronize() {
+func (dc *DeploymentController) SyncDeployments() {
 	deployments, err := dc.osClient.ListDeployments(labels.Everything())
 	if err != nil {
 		glog.Errorf("Synchronization error: %v (%#v)", err, err)

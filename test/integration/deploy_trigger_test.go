@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -201,44 +202,29 @@ func TestSuccessfulManualDeployment(t *testing.T) {
 	defer openshift.Shutdown()
 
 	config := manualDeploymentConfig()
+	var err error
+
 	if _, err := openshift.Client.CreateDeploymentConfig(config); err != nil {
-		t.Fatalf("Couldn't create DeploymentConfig: %v", err)
+		t.Fatalf("Couldn't create DeploymentConfig: %v %#v", err, config)
 	}
 
-	newConfig, genErr := openshift.Client.GenerateDeploymentConfig(config.ID)
-	if genErr != nil {
-		t.Fatalf("Error generating config: %v", genErr)
+	if config, err = openshift.Client.GenerateDeploymentConfig(config.ID); err != nil {
+		t.Fatalf("Error generating config: %v", err)
 	}
 
-	if newConfig == nil {
-		t.Fatalf("Expected a generated config from id %s", config.ID)
+	if _, err := openshift.Client.UpdateDeploymentConfig(config); err != nil {
+		t.Fatalf("Couldn't create updated DeploymentConfig: %v %#v", err, config)
 	}
 
-	if _, err := openshift.Client.UpdateDeploymentConfig(newConfig); err != nil {
-		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
-	}
+	watch, _ := openshift.Client.WatchDeployments(labels.Everything(),
+		labels.Set{"configID": config.ID}.AsSelector(), 0)
 
-	deploymentExists := func() bool {
-		deployments, listErr := openshift.Client.ListDeployments(labels.Everything())
-		if listErr != nil {
-			t.Fatalf("Couldn't list deployments: %v", listErr)
-		}
+	event := <-watch.ResultChan()
 
-		return len(deployments.Items) > 0
-	}
+	deployment := event.Object.(*deployapi.Deployment)
 
-	if !retry(5, time.Second/2, deploymentExists, "deployment check") {
-		t.Fatalf("Expected a deployment to exist")
-	}
-
-	deployments, _ := openshift.Client.ListDeployments(labels.Everything())
-	if len(deployments.Items) != 1 {
-		t.Fatalf("Expected 1 deployment, got %d", len(deployments.Items))
-	}
-
-	deploymentLabel := deployments.Items[0].Labels["configID"]
-	if deploymentLabel != newConfig.ID {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", deploymentLabel, newConfig.ID)
+	if e, a := config.ID, deployment.Labels["configID"]; e != a {
+		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
 	}
 }
 
@@ -254,49 +240,34 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 		},
 	}
 
+	config := imageChangeDeploymentConfig()
+	var err error
+
 	if _, err := openshift.Client.CreateImageRepository(imageRepo); err != nil {
 		t.Fatalf("Couldn't create ImageRepository: %v", err)
 	}
 
-	config := imageChangeDeploymentConfig()
 	if _, err := openshift.Client.CreateDeploymentConfig(config); err != nil {
 		t.Fatalf("Couldn't create DeploymentConfig: %v", err)
 	}
 
-	newConfig, genErr := openshift.Client.GenerateDeploymentConfig(config.ID)
-	if genErr != nil {
-		t.Fatalf("Error generating config: %v", genErr)
+	if config, err = openshift.Client.GenerateDeploymentConfig(config.ID); err != nil {
+		t.Fatalf("Error generating config: %v", err)
 	}
 
-	if newConfig == nil {
-		t.Fatalf("Expected a generated config from id %s", config.ID)
-	}
-
-	if _, err := openshift.Client.UpdateDeploymentConfig(newConfig); err != nil {
+	if _, err := openshift.Client.UpdateDeploymentConfig(config); err != nil {
 		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
 	}
 
-	deploymentExists := func() bool {
-		deployments, listErr := openshift.Client.ListDeployments(labels.Everything())
-		if listErr != nil {
-			t.Fatalf("Couldn't list deployments: %v", listErr)
-		}
+	watch, _ := openshift.Client.WatchDeployments(labels.Everything(),
+		labels.Set{"configID": config.ID}.AsSelector(), 0)
 
-		return len(deployments.Items) > 0
-	}
+	event := <-watch.ResultChan()
 
-	if !retry(5, time.Second/2, deploymentExists, "deployment check") {
-		t.Fatalf("Expected a deployment to exist")
-	}
+	deployment := event.Object.(*deployapi.Deployment)
 
-	deployments, _ := openshift.Client.ListDeployments(labels.Everything())
-	if len(deployments.Items) != 1 {
-		t.Fatalf("Expected 1 deployment, got %d", len(deployments.Items))
-	}
-
-	deploymentLabel := deployments.Items[0].Labels["configID"]
-	if deploymentLabel != newConfig.ID {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", deploymentLabel, newConfig.ID)
+	if e, a := config.ID, deployment.Labels["configID"]; e != a {
+		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
 	}
 }
 
@@ -304,84 +275,64 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 	openshift := NewTestOpenshift(t)
 	defer openshift.Shutdown()
 
-	// submit the initial deployment config
 	config := changeDeploymentConfig()
+	var err error
+
+	// submit the initial deployment config
 	if _, err := openshift.Client.CreateDeploymentConfig(config); err != nil {
 		t.Fatalf("Couldn't create DeploymentConfig: %v", err)
 	}
 
 	// submit the initial generated config, which will cause an initial deployment
-	newConfig, genErr := openshift.Client.GenerateDeploymentConfig(config.ID)
-	if genErr != nil {
-		t.Fatalf("Error generating config: %v", genErr)
+	if config, err = openshift.Client.GenerateDeploymentConfig(config.ID); err != nil {
+		t.Fatalf("Error generating config: %v", err)
 	}
 
-	if newConfig == nil {
-		t.Fatalf("Expected a generated config from id %s", config.ID)
-	}
-
-	if _, err := openshift.Client.UpdateDeploymentConfig(newConfig); err != nil {
+	if _, err := openshift.Client.UpdateDeploymentConfig(config); err != nil {
 		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
 	}
+
+	watch, _ := openshift.Client.WatchDeployments(labels.Everything(),
+		labels.Set{"configID": config.ID}.AsSelector(), 0)
+
+	event := <-watch.ResultChan()
 
 	// verify the initial deployment exists
-	deploymentExists := func() bool {
-		deployments, listErr := openshift.Client.ListDeployments(labels.Everything())
-		if listErr != nil {
-			t.Fatalf("Couldn't list deployments: %v", listErr)
-		}
+	deployment := event.Object.(*deployapi.Deployment)
 
-		return len(deployments.Items) == 1
+	if e, a := config.ID, deployment.Labels["configID"]; e != a {
+		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
 	}
 
-	if !retry(5, time.Second/2, deploymentExists, "deployment check") {
-		t.Fatalf("Expected a deployment to exist")
-	}
-
-	deployments, _ := openshift.Client.ListDeployments(labels.Everything())
-	if len(deployments.Items) != 1 {
-		t.Fatalf("Expected 1 deployment, got %d", len(deployments.Items))
-	}
-
-	deploymentLabel := deployments.Items[0].Labels["configID"]
-	if deploymentLabel != newConfig.ID {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", deploymentLabel, newConfig.ID)
-	}
+	assertEnvVarEquals("ENV_TEST", "ENV_VALUE1", deployment, t)
 
 	// submit a new config with an updated environment variable
-	updatedConfig, updatedGenErr := openshift.Client.GenerateDeploymentConfig(config.ID)
-	if updatedGenErr != nil {
-		t.Fatalf("Error generating config: %v", updatedGenErr)
+	if config, err = openshift.Client.GenerateDeploymentConfig(config.ID); err != nil {
+		t.Fatalf("Error generating config: %v", err)
 	}
 
-	if updatedConfig == nil {
-		t.Fatalf("Expected a generated config from id %s", config.ID)
-	}
+	config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[0].Env[0].Value = "UPDATED"
 
-	updatedConfig.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[0].Env[0].Value = "UPDATED"
-
-	if _, err := openshift.Client.UpdateDeploymentConfig(updatedConfig); err != nil {
+	if _, err := openshift.Client.UpdateDeploymentConfig(config); err != nil {
 		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
 	}
 
-	// verify a new deployment was created
-	twoDeploymentsExist := func() bool {
-		deployments, listErr := openshift.Client.ListDeployments(labels.Everything())
-		if listErr != nil {
-			t.Fatalf("Couldn't list deployments: %v", listErr)
+	event = <-watch.ResultChan()
+	deployment = event.Object.(*deployapi.Deployment)
+
+	assertEnvVarEquals("ENV_TEST", "UPDATED", deployment, t)
+}
+
+func assertEnvVarEquals(name string, value string, deployment *deployapi.Deployment, t *testing.T) {
+	env := deployment.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[0].Env
+
+	for _, e := range env {
+		if e.Name == name && e.Value == value {
+			return
 		}
-
-		return len(deployments.Items) == 2
 	}
 
-	if !retry(5, time.Second/2, twoDeploymentsExist, "second deployment check") {
-		t.Fatalf("Expected two deployments to exist")
-	}
-
-	newDeployments, _ := openshift.Client.ListDeployments(labels.Everything())
-	if len(newDeployments.Items) != 2 {
-		t.Fatalf("Expected 2 deployments, got %d", len(newDeployments.Items))
-	}
+	t.Fatalf("Expected env var with name %s and value %s", name, value)
 }
 
 type podInfoGetter struct {
@@ -394,12 +345,14 @@ func (p *podInfoGetter) GetPodInfo(host, podID string) (kapi.PodInfo, error) {
 }
 
 type testOpenshift struct {
-	Client *osclient.Client
-	server *httptest.Server
+	Client       *osclient.Client
+	server       *httptest.Server
+	shutdownChan chan int
 }
 
 func (o *testOpenshift) Shutdown() {
 	glog.Info("Shutting down test openshift")
+	close(o.shutdownChan)
 	o.server.CloseClientConnections()
 	o.server.Close()
 	deleteAllEtcdKeys()
@@ -455,15 +408,28 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 		t.Errorf("Expected %#v, got %#v", e, a)
 	}
 
-	env := []kapi.EnvVar{{Name: "KUBERNETES_MASTER", Value: openshift.server.URL}}
-	deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
-	deployController.Run(5 * time.Second)
+	// start controllers
+	openshift.shutdownChan = make(chan int)
 
-	deployConfigController := deploy.NewDeploymentConfigController(osClient)
-	deployConfigController.Run(5 * time.Second)
+	go func() {
+		env := []kapi.EnvVar{{Name: "KUBERNETES_MASTER", Value: openshift.server.URL}}
+		deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
+		deployConfigController := deploy.NewDeploymentConfigController(osClient)
+		deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
 
-	deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
-	deployTriggerController.Run(5 * time.Second)
+		for {
+			select {
+			case <-openshift.shutdownChan:
+				fmt.Println("Shutting down test controllers")
+				return
+			default:
+				deployController.SyncDeployments()
+				deployConfigController.SyncDeploymentConfigs()
+				deployTriggerController.SyncDeploymentTriggers()
+				time.Sleep(time.Millisecond * 300)
+			}
+		}
+	}()
 
 	return openshift
 }

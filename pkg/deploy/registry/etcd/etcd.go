@@ -74,6 +74,18 @@ func (r *Etcd) DeleteDeployment(id string) error {
 	return etcderr.InterpretDeleteError(err, "deployment", id)
 }
 
+// WatchDeployments begins watching for new, changed, or deleted Deployments.
+func (r *Etcd) WatchDeployments(resourceVersion uint64, filter func(deployment *api.Deployment) bool) (watch.Interface, error) {
+	return r.WatchList("/deployments", resourceVersion, func(obj runtime.Object) bool {
+		deployment, ok := obj.(*api.Deployment)
+		if !ok {
+			glog.Errorf("Unexpected object during deployment watch: %#v", obj)
+			return false
+		}
+		return filter(deployment)
+	})
+}
+
 // ListDeploymentConfigs obtains a list of DeploymentConfigs.
 func (r *Etcd) ListDeploymentConfigs(selector labels.Selector) (*api.DeploymentConfigList, error) {
 	deploymentConfigs := api.DeploymentConfigList{}

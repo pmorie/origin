@@ -9,6 +9,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/apiserver"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
 	"github.com/golang/glog"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -100,4 +101,14 @@ func (s *REST) Update(obj runtime.Object) (<-chan runtime.Object, error) {
 		}
 		return deployment, nil
 	}), nil
+}
+
+// Watch begins watching for new, changed, or deleted Deployments.
+func (s *REST) Watch(label, field labels.Selector, resourceVersion uint64) (watch.Interface, error) {
+	return s.registry.WatchDeployments(resourceVersion, func(deployment *deployapi.Deployment) bool {
+		fields := labels.Set{
+			"ID": deployment.ID,
+		}
+		return label.Matches(labels.Set(deployment.Labels)) && field.Matches(fields)
+	})
 }
