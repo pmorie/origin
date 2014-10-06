@@ -134,6 +134,57 @@ func manualDeploymentConfig() *deployapi.DeploymentConfig {
 	}
 }
 
+func changeDeploymentConfig() *deployapi.DeploymentConfig {
+	return &deployapi.DeploymentConfig{
+		JSONBase: kapi.JSONBase{ID: "change-deploy-config"},
+		Triggers: []deployapi.DeploymentTriggerPolicy{
+			{
+				Type: deployapi.DeploymentTriggerManual,
+			},
+			{
+				Type:      deployapi.DeploymentTriggerOnConfigChange,
+				Automatic: true,
+			},
+		},
+		Template: deployapi.DeploymentTemplate{
+			Strategy: deployapi.DeploymentStrategy{
+				Type: "customPod",
+				CustomPod: &deployapi.CustomPodDeploymentStrategy{
+					Image: "registry:8080/openshift/kube-deploy",
+				},
+			},
+			ControllerTemplate: kapi.ReplicationControllerState{
+				Replicas: 1,
+				ReplicaSelector: map[string]string{
+					"name": "test-pod",
+				},
+				PodTemplate: kapi.PodTemplate{
+					Labels: map[string]string{
+						"name": "test-pod",
+					},
+					DesiredState: kapi.PodState{
+						Manifest: kapi.ContainerManifest{
+							Version: "v1beta1",
+							Containers: []kapi.Container{
+								{
+									Name:  "container-1",
+									Image: "registry:8080/openshift/test-image:ref-1",
+									Env: []kapi.EnvVar{
+										{
+											Name:  "ENV_TEST",
+											Value: "ENV_VALUE1",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func retry(maxAttempts int, delay time.Duration, f func() bool, label string) bool {
 	for i := 0; i <= maxAttempts; i++ {
 		if f() {
@@ -248,6 +299,90 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 	deploymentLabel := deployments.Items[0].Labels["configID"]
 	if deploymentLabel != newConfig.ID {
 		t.Fatalf("Expected deployment configID label '%s', got '%s'", deploymentLabel, newConfig.ID)
+	}
+}
+
+func TestSimpleConfigChangeTrigger(t *testing.T) {
+	openshift := NewTestOpenshift(t)
+	defer openshift.Shutdown()
+
+	// submit the initial deployment config
+	config := changeDeploymentConfig()
+	if _, err := openshift.Client.CreateDeploymentConfig(config); err != nil {
+		t.Fatalf("Couldn't create DeploymentConfig: %v", err)
+	}
+
+	// submit the initial generated config, which will cause an initial deployment
+	newConfig, genErr := openshift.Client.GenerateDeploymentConfig(config.ID)
+	if genErr != nil {
+		t.Fatalf("Error generating config: %v", genErr)
+	}
+
+	if newConfig == nil {
+		t.Fatalf("Expected a generated config from id %s", config.ID)
+	}
+
+	if _, err := openshift.Client.UpdateDeploymentConfig(newConfig); err != nil {
+		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
+	}
+
+	// verify the initial deployment exists
+	deploymentExists := func() bool {
+		deployments, listErr := openshift.Client.ListDeployments(labels.Everything())
+		if listErr != nil {
+			t.Fatalf("Couldn't list deployments: %v", listErr)
+		}
+
+		return len(deployments.Items) == 1
+	}
+
+	if !retry(5, time.Second/2, deploymentExists, "deployment check") {
+		t.Fatalf("Expected a deployment to exist")
+	}
+
+	deployments, _ := openshift.Client.ListDeployments(labels.Everything())
+	if len(deployments.Items) != 1 {
+		t.Fatalf("Expected 1 deployment, got %d", len(deployments.Items))
+	}
+
+	deploymentLabel := deployments.Items[0].Labels["configID"]
+	if deploymentLabel != newConfig.ID {
+		t.Fatalf("Expected deployment configID label '%s', got '%s'", deploymentLabel, newConfig.ID)
+	}
+
+	// submit a new config with an updated environment variable
+	updatedConfig, updatedGenErr := openshift.Client.GenerateDeploymentConfig(config.ID)
+	if updatedGenErr != nil {
+		t.Fatalf("Error generating config: %v", updatedGenErr)
+	}
+
+	if updatedConfig == nil {
+		t.Fatalf("Expected a generated config from id %s", config.ID)
+	}
+
+	updatedConfig.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[0].Env[0].Value = "UPDATED"
+
+	if _, err := openshift.Client.UpdateDeploymentConfig(updatedConfig); err != nil {
+		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
+	}
+
+	// verify a new deployment was created
+	twoDeploymentsExist := func() bool {
+		deployments, listErr := openshift.Client.ListDeployments(labels.Everything())
+		if listErr != nil {
+			t.Fatalf("Couldn't list deployments: %v", listErr)
+		}
+
+		return len(deployments.Items) == 2
+	}
+
+	if !retry(5, time.Second/2, twoDeploymentsExist, "second deployment check") {
+		t.Fatalf("Expected two deployments to exist")
+	}
+
+	newDeployments, _ := openshift.Client.ListDeployments(labels.Everything())
+	if len(newDeployments.Items) != 2 {
+		t.Fatalf("Expected 2 deployments, got %d", len(newDeployments.Items))
 	}
 }
 
