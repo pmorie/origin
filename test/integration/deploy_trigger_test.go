@@ -343,10 +343,13 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 		t.Fatalf("Expected 1 deployment, got %d", len(deployments.Items))
 	}
 
-	deploymentLabel := deployments.Items[0].Labels["configID"]
+	deployment := deployments.Items[0]
+	deploymentLabel := deployment.Labels["configID"]
 	if deploymentLabel != newConfig.ID {
 		t.Fatalf("Expected deployment configID label '%s', got '%s'", deploymentLabel, newConfig.ID)
 	}
+
+	assertEnvVarEquals("ENV_TEST", "ENV_VALUE1", &deployment, t)
 
 	// submit a new config with an updated environment variable
 	updatedConfig, updatedGenErr := openshift.Client.GenerateDeploymentConfig(config.ID)
@@ -382,6 +385,22 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 	if len(newDeployments.Items) != 2 {
 		t.Fatalf("Expected 2 deployments, got %d", len(newDeployments.Items))
 	}
+
+	deployment = newDeployments.Items[1]
+	assertEnvVarEquals("ENV_TEST", "UPDATED", &deployment, t)
+}
+
+
+func assertEnvVarEquals(name string, value string, deployment *deployapi.Deployment, t *testing.T){
+	env := deployment.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers[0].Env
+
+	for _, e := range env {
+		if e.Name == name && e.Value == value {
+			return
+		}
+	}
+
+	t.Fatalf("Expected env var with name %s and value %s", name, value)
 }
 
 type podInfoGetter struct {
