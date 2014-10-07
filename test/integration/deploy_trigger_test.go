@@ -245,7 +245,7 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 	config := imageChangeDeploymentConfig()
 	var err error
 
-	if _, err := openshift.Client.CreateImageRepository(imageRepo); err != nil {
+	if imageRepo, err = openshift.Client.CreateImageRepository(imageRepo); err != nil {
 		t.Fatalf("Couldn't create ImageRepository: %v", err)
 	}
 
@@ -273,6 +273,24 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 
 	if e, a := config.ID, deployment.Labels["configID"]; e != a {
 		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
+	}
+
+	imageRepo.Tags["latest"] = "ref-2"
+
+	if _, err = openshift.Client.UpdateImageRepository(imageRepo); err != nil {
+		t.Fatalf("Error updating imageRepo: %v", err)
+	}
+
+	event = <-watch.ResultChan()
+
+	deployment = event.Object.(*deployapi.Deployment)
+
+	if e, a := config.ID, deployment.Labels["configID"]; e != a {
+		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
+	}
+
+	if deployment.ID != config.ID+"-2" {
+		t.Fatalf("Unexpected deployment ID: %v", deployment.ID)
 	}
 }
 
