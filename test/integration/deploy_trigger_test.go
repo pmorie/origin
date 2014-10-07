@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -354,17 +353,17 @@ func (p *podInfoGetter) GetPodInfo(host, podID string) (kapi.PodInfo, error) {
 }
 
 type testOpenshift struct {
-	Client       *osclient.Client
-	server       *httptest.Server
-	shutdownChan chan int
+	Client          *osclient.Client
+	server          *httptest.Server
+	stopControllers chan struct{}
 }
 
 func (o *testOpenshift) Shutdown() {
-	glog.Info("Shutting down test openshift")
-	close(o.shutdownChan)
+	close(o.stopControllers)
 	o.server.CloseClientConnections()
 	o.server.Close()
 	deleteAllEtcdKeys()
+	glog.Info("Destroyed test openshift")
 }
 
 func NewTestOpenshift(t *testing.T) *testOpenshift {
@@ -420,26 +419,24 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 	}
 
 	// start controllers
-	openshift.shutdownChan = make(chan int)
+	openshift.stopControllers = make(chan struct{})
+
+	env := []kapi.EnvVar{{Name: "KUBERNETES_MASTER", Value: openshift.server.URL}}
+	deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
+	deployConfigController := deploy.NewDeploymentConfigController(osClient)
+	deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
+
+	go deployController.SyncDeployments()
+	go deployConfigController.SyncDeploymentConfigs()
+	go deployTriggerController.SyncDeploymentTriggers()
 
 	go func() {
-		env := []kapi.EnvVar{{Name: "KUBERNETES_MASTER", Value: openshift.server.URL}}
-		deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
-		deployConfigController := deploy.NewDeploymentConfigController(osClient)
-		deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
+		<-openshift.stopControllers
 
-		for {
-			select {
-			case <-openshift.shutdownChan:
-				fmt.Println("Shutting down test controllers")
-				return
-			default:
-				deployController.SyncDeployments()
-				deployConfigController.SyncDeploymentConfigs()
-				deployTriggerController.SyncDeploymentTriggers()
-				time.Sleep(time.Millisecond * 300)
-			}
-		}
+		glog.Info("Shutting down test controllers")
+		deployController.Shutdown()
+		deployConfigController.Shutdown()
+		deployTriggerController.Shutdown()
 	}()
 
 	return openshift

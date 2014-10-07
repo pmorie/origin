@@ -6,7 +6,6 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"hash/adler32"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -92,13 +91,4 @@ func HashPodTemplate(t api.PodTemplate) uint64 {
 
 func PodTemplatesEqual(a, b api.PodTemplate) bool {
 	return HashPodTemplate(a) == HashPodTemplate(b)
-}
-
-// IsNotFoundError replaces the upstream errors.IsNotFound function which
-// is incorrectly returning error strings rather than API error types for
-// storage 404's.
-// Upstream fix: https://github.com/GoogleCloudPlatform/kubernetes/pull/1500
-func IsNotFoundError(err error) bool {
-	match, _ := regexp.MatchString("status.*failure.*code.*404", err.Error())
-	return match
 }
