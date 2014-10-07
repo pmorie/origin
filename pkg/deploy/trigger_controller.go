@@ -179,6 +179,7 @@ type DeploymentTriggerController struct {
 	configCache       deploymentConfigCache
 	configTriggers    deploymentConfigTriggers
 	deployConfigWatch watch.Interface
+	shutdown          chan struct{}
 }
 
 // NewDeploymentTriggerController creates a new DeploymentTriggerController.
@@ -196,8 +197,14 @@ func (c *DeploymentTriggerController) Run(period time.Duration) {
 	go util.Forever(func() { c.SyncDeploymentTriggers() }, period)
 }
 
+func (c *DeploymentTriggerController) Shutdown() {
+	close(c.shutdown)
+}
+
 func (c *DeploymentTriggerController) SyncDeploymentTriggers() {
 	glog.Info("Bootstrapping deployment trigger controller")
+
+	c.shutdown = make(chan struct{})
 
 	imageRepos, err := c.osClient.ListImageRepositories(labels.Everything())
 	if err != nil {
@@ -246,7 +253,7 @@ func (c *DeploymentTriggerController) SyncDeploymentTriggers() {
 	go c.watchDeploymentConfigs()
 	go c.watchImageRepositories()
 
-	select {}
+	<-c.shutdown
 }
 
 func (c *DeploymentTriggerController) regenerate(configID string) error {
@@ -351,6 +358,8 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs() {
 
 	for {
 		select {
+		case <-c.shutdown:
+			return
 		case configEvent, open := <-configChan:
 			if !open {
 				// watchChannel has been closed, or something else went
@@ -435,6 +444,8 @@ func (c *DeploymentTriggerController) watchImageRepositories() {
 
 	for {
 		select {
+		case <-c.shutdown:
+			return
 		case imageRepoEvent, open := <-imageRepoChan:
 			if !open {
 				return

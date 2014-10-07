@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
@@ -18,6 +19,7 @@ type DeploymentConfigController struct {
 	osClient    osclient.Interface
 	configCache deploymentConfigCache
 	configWatch watch.Interface
+	shutdown    chan struct{}
 }
 
 // NewDeploymentConfigController creates a new DeploymentConfigController.
@@ -32,8 +34,14 @@ func (c *DeploymentConfigController) Run(period time.Duration) {
 	go util.Forever(func() { c.SyncDeploymentConfigs() }, period)
 }
 
+func (c *DeploymentConfigController) Shutdown() {
+	close(c.shutdown)
+}
+
 func (c *DeploymentConfigController) SyncDeploymentConfigs() {
 	glog.Info("Bootstrapping deploymentConfig controller")
+
+	c.shutdown = make(chan struct{})
 
 	deploymentConfigs, err := c.osClient.ListDeploymentConfigs(labels.Everything())
 	if err != nil {
@@ -54,7 +62,7 @@ func (c *DeploymentConfigController) SyncDeploymentConfigs() {
 
 	go c.watchDeploymentConfigs()
 
-	select {}
+	<-c.shutdown
 }
 
 // TODO: reduce code duplication between trigger and config controllers
@@ -98,11 +106,11 @@ func (c *DeploymentConfigController) shouldDeploy(config *deployapi.DeploymentCo
 
 	deployment, err := c.latestDeploymentForConfig(config)
 	if err != nil {
-		if IsNotFoundError(err) {
+		if errors.IsNotFound(err) {
 			glog.Infof("Should deploy config %s because there's no latest deployment", config.ID)
 			return true, nil
 		} else {
-			glog.Info("Shouldn't deploy config %s because of an error looking up latest deployment", config.ID)
+			glog.Infof("Shouldn't deploy config %s because of an error looking up latest deployment", config.ID)
 			return false, err
 		}
 	}
@@ -146,6 +154,8 @@ func (c *DeploymentConfigController) watchDeploymentConfigs() {
 
 	for {
 		select {
+		case <-c.shutdown:
+			return
 		case configEvent, open := <-configChan:
 			if !open {
 				// watchChannel has been closed, or something else went
