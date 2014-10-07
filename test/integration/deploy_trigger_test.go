@@ -421,20 +421,16 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 	// start controllers
 	openshift.stopControllers = make(chan struct{})
 
-	env := []kapi.EnvVar{{Name: "KUBERNETES_MASTER", Value: openshift.server.URL}}
-	deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
-	deployConfigController := deploy.NewDeploymentConfigController(osClient)
-	deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
-
-	go deployController.SyncDeployments()
-	go deployConfigController.SyncDeploymentConfigs()
-	go deployTriggerController.SyncDeploymentTriggers()
-
 	go func() {
+		deployConfigController := deploy.NewDeploymentConfigController(osClient)
+		deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
+
+		go deployConfigController.SyncDeploymentConfigs()
+		go deployTriggerController.SyncDeploymentTriggers()
+
 		<-openshift.stopControllers
 
 		glog.Info("Shutting down test controllers")
-		deployController.Shutdown()
 		deployConfigController.Shutdown()
 		deployTriggerController.Shutdown()
 	}()
