@@ -47,11 +47,11 @@ type Deployment struct {
 // DeploymentTriggerPolicy describes a policy for a single trigger that results in a new Deployment.
 type DeploymentTriggerPolicy struct {
 	Type              DeploymentTriggerType               `json:"type,omitempty" yaml:"type,omitempty"`
-	Automatic         bool                                `json:"auto,omitempty" yaml:"auto,omitempty"`
 	ImageChangeParams *DeploymentTriggerImageChangeParams `json:"imageChangeParams,omitempty" yaml:"imageChangeParams,omitempty"`
 }
 
 type DeploymentTriggerImageChangeParams struct {
+	Automatic      bool     `json:"auto,omitempty" yaml:"auto,omitempty"`
 	ContainerNames []string `json:"containerNames,omitempty" yaml:"containerNames,omitempty"`
 	RepositoryName string   `json:"repositoryName,omitempty" yaml:"repositoryName,omitempty"`
 	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`

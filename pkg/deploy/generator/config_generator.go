@@ -63,7 +63,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	configPodTemplate := deploymentConfig.Template.ControllerTemplate.PodTemplate
 	imageRepos := g.imageRepos()
 
-	for _, repoName := range deploy.ReferencedRepos(deploymentConfig).List() {
+	for _, repoName := range referencedRepos(deploymentConfig).List() {
 		params := deploy.ParamsForImageChangeTrigger(deploymentConfig, repoName)
 		repo, ok := imageRepos[params.RepositoryName]
 		if !ok {
@@ -123,4 +123,21 @@ func (g *deploymentConfigGenerator) imageRepos() map[string]imageapi.ImageReposi
 	}
 
 	return repos
+}
+
+// Returns the image repositories names a config has triggers registered for
+func referencedRepos(config *deployapi.DeploymentConfig) util.StringSet {
+	repoIDs := util.StringSet{}
+
+	if config == nil || config.Triggers == nil {
+		return repoIDs
+	}
+
+	for _, trigger := range config.Triggers {
+		if trigger.Type == deployapi.DeploymentTriggerOnImageChange {
+			repoIDs.Insert(trigger.ImageChangeParams.RepositoryName)
+		}
+	}
+
+	return repoIDs
 }

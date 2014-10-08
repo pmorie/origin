@@ -46,6 +46,7 @@ func imageChangeDeploymentConfig() *deployapi.DeploymentConfig {
 			{
 				Type: deployapi.DeploymentTriggerOnImageChange,
 				ImageChangeParams: &deployapi.DeploymentTriggerImageChangeParams{
+					Automatic: true,
 					ContainerNames: []string{
 						"container-1",
 					},
@@ -140,8 +141,7 @@ func changeDeploymentConfig() *deployapi.DeploymentConfig {
 				Type: deployapi.DeploymentTriggerManual,
 			},
 			{
-				Type:      deployapi.DeploymentTriggerOnConfigChange,
-				Automatic: true,
+				Type: deployapi.DeploymentTriggerOnConfigChange,
 			},
 		},
 		Template: deployapi.DeploymentTemplate{

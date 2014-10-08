@@ -410,7 +410,7 @@ func (c *DeploymentTriggerController) refreshTriggers(config *deployapi.Deployme
 func (c *DeploymentTriggerController) refreshImageRepoChangeTriggers(config *deployapi.DeploymentConfig) {
 	glog.Infof("Refreshing image repo triggers for deploymentConfig %v", config.ID)
 	configID := config.ID
-	currentRepoIDs := ReferencedRepos(config)
+	currentRepoIDs := reposWithAutomaticTriggers(config)
 
 	glog.Infof("deploymentConfig %v references imageRepositories %v", configID, currentRepoIDs)
 
@@ -496,4 +496,22 @@ func (c *DeploymentTriggerController) handleImageRepoWatch(repo *imageapi.ImageR
 			}
 		}
 	}
+}
+
+// Returns the image repositories names a config has triggers registered for
+// and which are set to Automatic.
+func reposWithAutomaticTriggers(config *deployapi.DeploymentConfig) util.StringSet {
+	repoIDs := util.StringSet{}
+
+	if config == nil || config.Triggers == nil {
+		return repoIDs
+	}
+
+	for _, trigger := range config.Triggers {
+		if trigger.Type == deployapi.DeploymentTriggerOnImageChange && trigger.ImageChangeParams.Automatic {
+			repoIDs.Insert(trigger.ImageChangeParams.RepositoryName)
+		}
+	}
+
+	return repoIDs
 }
