@@ -44,6 +44,10 @@ type Deployment struct {
 	State              DeploymentState                `json:"state,omitempty" yaml:"state,omitempty"`
 }
 
+// DeploymentConfigIDLabel is the key of a Deployment label whose value is the ID of a DeploymentConfig
+// on which the Deployment is based.
+const DeploymentConfigIDLabel = "deploymentConfigID"
+
 // DeploymentTriggerPolicy describes a policy for a single trigger that results in a new Deployment.
 type DeploymentTriggerPolicy struct {
 	Type              DeploymentTriggerType               `json:"type,omitempty" yaml:"type,omitempty"`

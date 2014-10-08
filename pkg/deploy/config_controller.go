@@ -123,7 +123,7 @@ func (c *DeploymentConfigController) deploy(config *deployapi.DeploymentConfig) 
 	for k, v := range config.Labels {
 		labels[k] = v
 	}
-	labels["configID"] = config.ID
+	labels[deployapi.DeploymentConfigIDLabel] = config.ID
 
 	deployment := &deployapi.Deployment{
 		JSONBase: api.JSONBase{

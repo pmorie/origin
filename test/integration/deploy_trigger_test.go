@@ -216,7 +216,7 @@ func TestSuccessfulManualDeployment(t *testing.T) {
 	}
 
 	watch, err := openshift.Client.WatchDeployments(labels.Everything(),
-		labels.Set{"configID": config.ID}.AsSelector(), 0)
+		labels.Set{deployapi.DeploymentConfigIDLabel: config.ID}.AsSelector(), 0)
 	if err != nil {
 		t.Fatalf("Couldn't subscribe to Deployments: %v", err)
 	}
@@ -225,8 +225,8 @@ func TestSuccessfulManualDeployment(t *testing.T) {
 
 	deployment := event.Object.(*deployapi.Deployment)
 
-	if e, a := config.ID, deployment.Labels["configID"]; e != a {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
+	if e, a := config.ID, deployment.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+		t.Fatalf("Expected deployment DeploymentConfigIDLabel label '%s', got '%s'", e, a)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 	}
 
 	watch, err := openshift.Client.WatchDeployments(labels.Everything(),
-		labels.Set{"configID": config.ID}.AsSelector(), 0)
+		labels.Set{deployapi.DeploymentConfigIDLabel: config.ID}.AsSelector(), 0)
 	if err != nil {
 		t.Fatalf("Couldn't subscribe to Deployments %v", err)
 	}
@@ -271,8 +271,8 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 
 	deployment := event.Object.(*deployapi.Deployment)
 
-	if e, a := config.ID, deployment.Labels["configID"]; e != a {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
+	if e, a := config.ID, deployment.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+		t.Fatalf("Expected deployment DeploymentConfigIDLabel label '%s', got '%s'", e, a)
 	}
 
 	imageRepo.Tags["latest"] = "ref-2"
@@ -285,8 +285,8 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 
 	deployment = event.Object.(*deployapi.Deployment)
 
-	if e, a := config.ID, deployment.Labels["configID"]; e != a {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
+	if e, a := config.ID, deployment.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+		t.Fatalf("Expected deployment DeploymentConfigIDLabel label '%s', got '%s'", e, a)
 	}
 
 	if deployment.ID != config.ID+"-2" {
@@ -316,7 +316,7 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 	}
 
 	watch, err := openshift.Client.WatchDeployments(labels.Everything(),
-		labels.Set{"configID": config.ID}.AsSelector(), 0)
+		labels.Set{deployapi.DeploymentConfigIDLabel: config.ID}.AsSelector(), 0)
 	if err != nil {
 		t.Fatalf("Couldn't subscribe to Deployments %v", err)
 	}
@@ -326,8 +326,8 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 	// verify the initial deployment exists
 	deployment := event.Object.(*deployapi.Deployment)
 
-	if e, a := config.ID, deployment.Labels["configID"]; e != a {
-		t.Fatalf("Expected deployment configID label '%s', got '%s'", e, a)
+	if e, a := config.ID, deployment.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+		t.Fatalf("Expected deployment deployapi.DeploymentConfigIDLabel label '%s', got '%s'", e, a)
 	}
 
 	assertEnvVarEquals("ENV_TEST", "ENV_VALUE1", deployment, t)
