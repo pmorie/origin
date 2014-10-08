@@ -14,23 +14,6 @@ func LatestDeploymentIDForConfig(config *deployapi.DeploymentConfig) string {
 	return config.ID + "-" + strconv.Itoa(config.LatestVersion)
 }
 
-// Returns the image repositories names a config has triggers registered for
-func ReferencedRepos(config *deployapi.DeploymentConfig) util.StringSet {
-	repoIDs := util.StringSet{}
-
-	if config == nil || config.Triggers == nil {
-		return repoIDs
-	}
-
-	for _, trigger := range config.Triggers {
-		if trigger.Type == deployapi.DeploymentTriggerOnImageChange {
-			repoIDs.Insert(trigger.ImageChangeParams.RepositoryName)
-		}
-	}
-
-	return repoIDs
-}
-
 func ParamsForImageChangeTrigger(config *deployapi.DeploymentConfig, repoName string) *deployapi.DeploymentTriggerImageChangeParams {
 	if config == nil || config.Triggers == nil {
 		return nil
