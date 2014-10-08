@@ -27,12 +27,12 @@ type DeploymentTemplate struct {
 type DeploymentState string
 
 const (
-	DeploymentNew       DeploymentState = "new"
-	DeploymentPending   DeploymentState = "pending"
-	DeploymentRunning   DeploymentState = "running"
-	DeploymentComplete  DeploymentState = "complete"
-	DeploymentFailed    DeploymentState = "failed"
-	DeploymentCancelled DeploymentState = "cancelled"
+	DeploymentStateNew       DeploymentState = "New"
+	DeploymentStatePending   DeploymentState = "Pending"
+	DeploymentStateRunning   DeploymentState = "Running"
+	DeploymentStateComplete  DeploymentState = "Complete"
+	DeploymentStateFailed    DeploymentState = "Failed"
+	DeploymentStateCancelled DeploymentState = "Cancelled"
 )
 
 // A Deployment represents a single unique realization of a DeploymentConfig.
@@ -60,9 +60,9 @@ type DeploymentTriggerImageChangeParams struct {
 type DeploymentTriggerType string
 
 const (
-	DeploymentTriggerManual         DeploymentTriggerType = "manual"
-	DeploymentTriggerOnImageChange  DeploymentTriggerType = "image-change"
-	DeploymentTriggerOnConfigChange DeploymentTriggerType = "config-change"
+	DeploymentTriggerManual         DeploymentTriggerType = "Manual"
+	DeploymentTriggerOnImageChange  DeploymentTriggerType = "ImageChange"
+	DeploymentTriggerOnConfigChange DeploymentTriggerType = "ConfigChange"
 )
 
 // DeploymentConfig represents a configuration for a single deployment of a replication controller:
