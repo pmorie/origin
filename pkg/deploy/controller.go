@@ -99,11 +99,11 @@ func (dc *DeploymentController) syncDeployment(deployment *deployapi.Deployment)
 	glog.Infof("Synchronizing deployment id: %v state: %v resourceVersion: %v", deployment.ID, deployment.State, deployment.ResourceVersion)
 	var err error = nil
 	switch deployment.State {
-	case deployapi.DeploymentNew:
+	case deployapi.DeploymentStateNew:
 		err = dc.stateHandler.HandleNew(deployment)
-	case deployapi.DeploymentPending:
+	case deployapi.DeploymentStatePending:
 		err = dc.stateHandler.HandlePending(deployment)
-	case deployapi.DeploymentRunning:
+	case deployapi.DeploymentStateRunning:
 		err = dc.stateHandler.HandleRunning(deployment)
 	}
 	return err
@@ -185,10 +185,10 @@ func (dh *DefaultDeploymentHandler) HandleNew(deployment *deployapi.Deployment) 
 	glog.Infof("Attempting to create deployment pod: %+v", deploymentPod)
 	if pod, err := dh.kubeClient.CreatePod(kubeapi.NewContext(), deploymentPod); err != nil {
 		glog.Warningf("Received error creating pod: %v", err)
-		deployment.State = deployapi.DeploymentFailed
+		deployment.State = deployapi.DeploymentStateFailed
 	} else {
 		glog.Infof("Successfully created pod %+v", pod)
-		deployment.State = deployapi.DeploymentPending
+		deployment.State = deployapi.DeploymentStatePending
 	}
 
 	return dh.saveDeployment(deployment)
@@ -201,13 +201,13 @@ func (dh *DefaultDeploymentHandler) HandlePending(deployment *deployapi.Deployme
 	pod, err := dh.kubeClient.GetPod(kubeapi.NewContext(), podID)
 	if err != nil {
 		glog.Errorf("Error retrieving pod for deployment ID %v: %#v", deployment.ID, err)
-		deployment.State = deployapi.DeploymentFailed
+		deployment.State = deployapi.DeploymentStateFailed
 	} else {
 		glog.Infof("Deployment pod is %+v", pod)
 
 		switch pod.CurrentState.Status {
 		case kubeapi.PodRunning:
-			deployment.State = deployapi.DeploymentRunning
+			deployment.State = deployapi.DeploymentStateRunning
 		case kubeapi.PodTerminated:
 			dh.checkForTerminatedDeploymentPod(deployment, pod)
 		}
@@ -223,7 +223,7 @@ func (dh *DefaultDeploymentHandler) HandleRunning(deployment *deployapi.Deployme
 	pod, err := dh.kubeClient.GetPod(kubeapi.NewContext(), podID)
 	if err != nil {
 		glog.Errorf("Error retrieving pod for deployment ID %v: %#v", deployment.ID, err)
-		deployment.State = deployapi.DeploymentFailed
+		deployment.State = deployapi.DeploymentStateFailed
 	} else {
 		glog.Infof("Deployment pod is %+v", pod)
 		dh.checkForTerminatedDeploymentPod(deployment, pod)
@@ -238,14 +238,14 @@ func (dh *DefaultDeploymentHandler) checkForTerminatedDeploymentPod(deployment *
 		return
 	}
 
-	deployment.State = deployapi.DeploymentComplete
+	deployment.State = deployapi.DeploymentStateComplete
 	for _, info := range pod.CurrentState.Info {
 		if info.State.Termination != nil && info.State.Termination.ExitCode != 0 {
-			deployment.State = deployapi.DeploymentFailed
+			deployment.State = deployapi.DeploymentStateFailed
 		}
 	}
 
-	if deployment.State == deployapi.DeploymentComplete {
+	if deployment.State == deployapi.DeploymentStateComplete {
 		podID := deploymentPodID(deployment)
 		glog.Infof("Removing deployment pod for ID %v", podID)
 		dh.kubeClient.DeletePod(kubeapi.NewContext(), podID)

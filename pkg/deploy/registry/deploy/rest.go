@@ -70,7 +70,7 @@ func (s *REST) Create(ctx kubeapi.Context, obj runtime.Object) (<-chan runtime.O
 	if len(deployment.ID) == 0 {
 		deployment.ID = uuid.NewUUID().String()
 	}
-	deployment.State = deployapi.DeploymentNew
+	deployment.State = deployapi.DeploymentStateNew
 
 	if errs := validation.ValidateDeployment(deployment); len(errs) > 0 {
 		return nil, kubeerrors.NewInvalid("deployment", deployment.ID, errs)
