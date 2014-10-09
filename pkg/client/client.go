@@ -299,7 +299,7 @@ func (c *Client) DeleteDeploymentConfig(ctx api.Context, id string) error {
 // GenerateDeploymentConfig generates a new deploymentConfig for the given ID.
 func (c *Client) GenerateDeploymentConfig(ctx api.Context, id string) (result *deployapi.DeploymentConfig, err error) {
 	result = &deployapi.DeploymentConfig{}
-	err = c.Get().Path("genDeploymentConfigs").Path(id).Do().Into(result)
+	err = c.Get().Path("generateDeploymentConfigs").Path(id).Do().Into(result)
 	return
 }
 

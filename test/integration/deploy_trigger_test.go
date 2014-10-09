@@ -415,15 +415,15 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 
 	imageEtcd := imageetcd.New(etcdHelper)
 	deployEtcd := deployetcd.New(etcdHelper)
-	deployConfigGen := deploygen.NewDeploymentConfigGenerator(deployEtcd, deployEtcd, imageEtcd)
+	deployConfigGenerator := deploygen.NewDeploymentConfigGenerator(deployEtcd, deployEtcd, imageEtcd)
 
 	storage := map[string]apiserver.RESTStorage{
-		"images":                  image.NewREST(imageEtcd),
-		"imageRepositories":       imagerepository.NewREST(imageEtcd),
-		"imageRepositoryMappings": imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
-		"deployments":             deployregistry.NewREST(deployEtcd),
-		"deploymentConfigs":       deployconfigregistry.NewREST(deployEtcd),
-		"genDeploymentConfigs":    deploygen.NewStorage(deployConfigGen, v1beta1.Codec),
+		"images":                    image.NewREST(imageEtcd),
+		"imageRepositories":         imagerepository.NewREST(imageEtcd),
+		"imageRepositoryMappings":   imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
+		"deployments":               deployregistry.NewREST(deployEtcd),
+		"deploymentConfigs":         deployconfigregistry.NewREST(deployEtcd),
+		"generateDeploymentConfigs": deploygen.NewREST(deployConfigGenerator, v1beta1.Codec),
 	}
 
 	apiserver.NewAPIGroup(kmaster.API_v1beta1()).InstallREST(osMux, "/api/v1beta1")

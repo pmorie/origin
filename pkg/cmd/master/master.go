@@ -237,17 +237,17 @@ func (c *config) runApiserver() {
 
 	// initialize OpenShift API
 	storage := map[string]apiserver.RESTStorage{
-		"builds":                  buildregistry.NewREST(buildEtcd),
-		"buildConfigs":            buildconfigregistry.NewREST(buildEtcd),
-		"buildLogs":               buildlogregistry.NewREST(buildEtcd, kubeClient, proxyPrefix),
-		"images":                  image.NewREST(imageEtcd),
-		"imageRepositories":       imagerepository.NewREST(imageEtcd),
-		"imageRepositoryMappings": imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
-		"deployments":             deployregistry.NewREST(deployEtcd),
-		"deploymentConfigs":       deployconfigregistry.NewREST(deployEtcd),
-		"genDeploymentConfigs":    deploygen.NewStorage(deployConfigGen, v1beta1.Codec),
-		"templateConfigs":         template.NewStorage(),
-		"routes":                  routeregistry.NewREST(routeEtcd),
+		"builds":                    buildregistry.NewREST(buildEtcd),
+		"buildConfigs":              buildconfigregistry.NewREST(buildEtcd),
+		"buildLogs":                 buildlogregistry.NewREST(buildEtcd, kubeClient, proxyPrefix),
+		"images":                    image.NewREST(imageEtcd),
+		"imageRepositories":         imagerepository.NewREST(imageEtcd),
+		"imageRepositoryMappings":   imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
+		"deployments":               deployregistry.NewREST(deployEtcd),
+		"deploymentConfigs":         deployconfigregistry.NewREST(deployEtcd),
+		"generateDeploymentConfigs": deploygen.NewREST(deployConfigGen, v1beta1.Codec),
+		"templateConfigs":           template.NewStorage(),
+		"routes":                    routeregistry.NewREST(routeEtcd),
 	}
 
 	osMux := http.NewServeMux()
