@@ -7,10 +7,10 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
-	deploy "github.com/openshift/origin/pkg/deploy"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfig "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
+	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	imagerepo "github.com/openshift/origin/pkg/image/registry/imagerepository"
 )
@@ -43,7 +43,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		return nil, err
 	}
 
-	deploymentID := deploy.LatestDeploymentIDForConfig(deploymentConfig)
+	deploymentID := deployutil.LatestDeploymentIDForConfig(deploymentConfig)
 
 	deployment, err := g.deploymentRegistry.GetDeployment(deploymentID)
 	if err != nil && !errors.IsNotFound(err) {
@@ -57,7 +57,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	referencedRepos := imageReposByDockerImageRepo(g.imageRepoRegistry, referencedRepoNames)
 
 	for _, repoName := range referencedRepoNames.List() {
-		params := deploy.ParamsForImageChangeTrigger(deploymentConfig, repoName)
+		params := deployutil.ParamsForImageChangeTrigger(deploymentConfig, repoName)
 		repo, ok := referencedRepos[params.RepositoryName]
 		if !ok {
 			return nil, fmt.Errorf("Config references unknown ImageRepository '%s'", params.RepositoryName)
@@ -90,7 +90,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 			// TODO: Is this a safe assumption? -- NO
 			deploymentConfig.LatestVersion = 1
 		}
-	} else if !deploy.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
+	} else if !deployutil.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
 		deploymentConfig.LatestVersion += 1
 	}
 
