@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -18,11 +19,12 @@ import (
 // Cache of config ID -> deploymentConfig
 type deploymentConfigCache struct {
 	store map[string]deployapi.DeploymentConfig
+	sync.Mutex
 }
 
 func newDeploymentConfigCache() deploymentConfigCache {
 	return deploymentConfigCache{
-		make(map[string]deployapi.DeploymentConfig),
+		store: make(map[string]deployapi.DeploymentConfig),
 	}
 }
 
@@ -34,6 +36,8 @@ func (c *deploymentConfigCache) refreshList(configs *deployapi.DeploymentConfigL
 
 // Returns true if the version changed
 func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) bool {
+	c.Lock()
+	defer c.Unlock()
 	currentConfig, ok := c.store[config.ID]
 	c.store[config.ID] = *config
 
@@ -41,10 +45,14 @@ func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) bool
 }
 
 func (c *deploymentConfigCache) delete(config *deployapi.DeploymentConfig) {
+	c.Lock()
+	defer c.Unlock()
 	delete(c.store, config.ID)
 }
 
 func (c *deploymentConfigCache) cachedConfig(id string) deployapi.DeploymentConfig {
+	c.Lock()
+	defer c.Unlock()
 	return c.store[id]
 }
 
@@ -64,11 +72,12 @@ func (t *deploymentConfigTriggers) fire(config *deployapi.DeploymentConfig) bool
 // A cache of DockerImageRepository -> ImageRepository
 type imageRepoCache struct {
 	store map[string]imageapi.ImageRepository
+	sync.Mutex
 }
 
 func newImageRepoCache() imageRepoCache {
 	return imageRepoCache{
-		make(map[string]imageapi.ImageRepository),
+		store: make(map[string]imageapi.ImageRepository),
 	}
 }
 
@@ -79,14 +88,20 @@ func (c *imageRepoCache) refreshList(repos *imageapi.ImageRepositoryList) {
 }
 
 func (c *imageRepoCache) refresh(repo *imageapi.ImageRepository) {
+	c.Lock()
+	defer c.Unlock()
 	c.store[repo.DockerImageRepository] = *repo
 }
 
 func (c *imageRepoCache) delete(repo *imageapi.ImageRepository) {
+	c.Lock()
+	defer c.Unlock()
 	delete(c.store, repo.DockerImageRepository)
 }
 
 func (c *imageRepoCache) cachedRepo(name string) imageapi.ImageRepository {
+	c.Lock()
+	defer c.Unlock()
 	return c.store[name]
 }
 
