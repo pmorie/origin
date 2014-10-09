@@ -1,4 +1,4 @@
-package deploy
+package controller
 
 import (
 	"time"
@@ -11,6 +11,7 @@ import (
 	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
 // A DeploymentConfigController is responsible for implementing the triggers registered by DeploymentConfigs
@@ -68,7 +69,7 @@ func (c *DeploymentConfigController) SyncDeploymentConfigs() {
 
 // TODO: reduce code duplication between trigger and config controllers
 func (c *DeploymentConfigController) latestDeploymentForConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
-	latestDeploymentId := LatestDeploymentIDForConfig(config)
+	latestDeploymentId := deployutil.LatestDeploymentIDForConfig(config)
 	deployment, err := c.osClient.GetDeployment(ctx, latestDeploymentId)
 	if err != nil {
 		// TODO: probably some error / race handling to do here
@@ -116,7 +117,7 @@ func (c *DeploymentConfigController) shouldDeploy(ctx kapi.Context, config *depl
 		}
 	}
 
-	return !PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
+	return !deployutil.PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
 }
 
 func (c *DeploymentConfigController) deploy(ctx kapi.Context, config *deployapi.DeploymentConfig) error {
@@ -128,7 +129,7 @@ func (c *DeploymentConfigController) deploy(ctx kapi.Context, config *deployapi.
 
 	deployment := &deployapi.Deployment{
 		JSONBase: kapi.JSONBase{
-			ID: LatestDeploymentIDForConfig(config),
+			ID: deployutil.LatestDeploymentIDForConfig(config),
 		},
 		Labels:             labels,
 		Strategy:           config.Template.Strategy,

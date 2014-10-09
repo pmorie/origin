@@ -45,7 +45,7 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
-	"github.com/openshift/origin/pkg/deploy"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
@@ -456,17 +456,17 @@ func (c *config) runDeploymentController() {
 	kubeClient := c.getKubeClient()
 	osClient := c.getOsClient()
 
-	deployController := deploy.NewDeploymentController(kubeClient, osClient, env)
+	deployController := deploycontroller.NewDeploymentController(kubeClient, osClient, env)
 	deployController.Run(10 * time.Second)
 }
 
 func (c *config) runDeploymentConfigController() {
-	deployConfigController := deploy.NewDeploymentConfigController(c.getOsClient())
+	deployConfigController := deploycontroller.NewDeploymentConfigController(c.getOsClient())
 	deployConfigController.Run(30 * time.Second)
 }
 
 func (c *config) runDeploymentTriggerController() {
-	deployTriggerController := deploy.NewDeploymentTriggerController(c.getOsClient())
+	deployTriggerController := deploycontroller.NewDeploymentTriggerController(c.getOsClient())
 	deployTriggerController.Run(30 * time.Second)
 }
 

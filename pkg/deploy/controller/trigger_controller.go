@@ -1,8 +1,7 @@
-package deploy
+package controller
 
 import (
 	"errors"
-	"sync"
 	"time"
 
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -12,18 +11,18 @@ import (
 	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
 // Cache of config ID -> deploymentConfig
 type deploymentConfigCache struct {
 	store map[string]deployapi.DeploymentConfig
-	sync.Mutex
 }
 
 func newDeploymentConfigCache() deploymentConfigCache {
 	return deploymentConfigCache{
-		store: make(map[string]deployapi.DeploymentConfig),
+		make(map[string]deployapi.DeploymentConfig),
 	}
 }
 
@@ -35,8 +34,6 @@ func (c *deploymentConfigCache) refreshList(configs *deployapi.DeploymentConfigL
 
 // Returns true if the version changed
 func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) bool {
-	c.Lock()
-	defer c.Unlock()
 	currentConfig, ok := c.store[config.ID]
 	c.store[config.ID] = *config
 
@@ -44,8 +41,6 @@ func (c *deploymentConfigCache) refresh(config *deployapi.DeploymentConfig) bool
 }
 
 func (c *deploymentConfigCache) delete(config *deployapi.DeploymentConfig) {
-	c.Lock()
-	defer c.Unlock()
 	delete(c.store, config.ID)
 }
 
@@ -69,12 +64,11 @@ func (t *deploymentConfigTriggers) fire(config *deployapi.DeploymentConfig) bool
 // A cache of DockerImageRepository -> ImageRepository
 type imageRepoCache struct {
 	store map[string]imageapi.ImageRepository
-	sync.Mutex
 }
 
 func newImageRepoCache() imageRepoCache {
 	return imageRepoCache{
-		store: make(map[string]imageapi.ImageRepository),
+		make(map[string]imageapi.ImageRepository),
 	}
 }
 
@@ -85,14 +79,10 @@ func (c *imageRepoCache) refreshList(repos *imageapi.ImageRepositoryList) {
 }
 
 func (c *imageRepoCache) refresh(repo *imageapi.ImageRepository) {
-	c.Lock()
-	defer c.Unlock()
 	c.store[repo.DockerImageRepository] = *repo
 }
 
 func (c *imageRepoCache) delete(repo *imageapi.ImageRepository) {
-	c.Lock()
-	defer c.Unlock()
 	delete(c.store, repo.DockerImageRepository)
 }
 
@@ -174,8 +164,8 @@ func (t *imageRepoTriggers) fire(
 
 	var (
 		repoName               = repo.DockerImageRepository
-		referencedImageVersion = ReferencedImages(deployment)[repo.DockerImageRepository]
-		params                 = ParamsForImageChangeTrigger(config, repoName)
+		referencedImageVersion = deployutil.ReferencedImages(deployment)[repo.DockerImageRepository]
+		params                 = deployutil.ParamsForImageChangeTrigger(config, repoName)
 		latestTagVersion       = repo.Tags[params.Tag]
 	)
 
@@ -296,7 +286,7 @@ func (c *DeploymentTriggerController) regenerate(ctx kapi.Context, configID stri
 }
 
 func (c *DeploymentTriggerController) latestDeploymentForConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
-	latestDeploymentId := LatestDeploymentIDForConfig(config)
+	latestDeploymentId := deployutil.LatestDeploymentIDForConfig(config)
 	deployment, err := c.osClient.GetDeployment(ctx, latestDeploymentId)
 	if err != nil {
 		// TODO: probably some error / race handling to do here
@@ -324,7 +314,7 @@ func (c *DeploymentTriggerController) detectMissedTrigger(ctx kapi.Context, conf
 }
 
 func (c *DeploymentTriggerController) detectMissedImageTrigger(config *deployapi.DeploymentConfig, deployment *deployapi.Deployment) bool {
-	refImageVersions := ReferencedImages(deployment)
+	refImageVersions := deployutil.ReferencedImages(deployment)
 
 	for _, trigger := range config.Triggers {
 		if trigger.Type != deployapi.DeploymentTriggerOnImageChange {
@@ -345,7 +335,7 @@ func (c *DeploymentTriggerController) detectMissedImageTrigger(config *deployapi
 }
 
 func (c *DeploymentTriggerController) detectMissedConfigTrigger(config *deployapi.DeploymentConfig, deployment *deployapi.Deployment) (bool, error) {
-	return PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
+	return deployutil.PodTemplatesEqual(deployment.ControllerTemplate.PodTemplate, config.Template.ControllerTemplate.PodTemplate), nil
 }
 
 func (c *DeploymentTriggerController) subscribeToImageRepos(ctx kapi.Context) error {
@@ -431,7 +421,7 @@ func (c *DeploymentTriggerController) refreshImageRepoChangeTriggers(config *dep
 	c.imageRepoTriggers.insert(configID, currentRepoIDs)
 
 	// Delete triggers for the removed image repos
-	deletedRepoIDs := Difference(c.imageRepoTriggers.reposForConfig(configID), currentRepoIDs)
+	deletedRepoIDs := deployutil.Difference(c.imageRepoTriggers.reposForConfig(configID), currentRepoIDs)
 	c.imageRepoTriggers.remove(configID, deletedRepoIDs)
 }
 
