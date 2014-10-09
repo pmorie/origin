@@ -43,10 +43,6 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		return nil, err
 	}
 
-	if deploymentConfig == nil {
-		return nil, fmt.Errorf("No deployment config returned with id %v", deploymentConfigID)
-	}
-
 	deploymentID := deploy.LatestDeploymentIDForConfig(deploymentConfig)
 
 	deployment, err := g.deploymentRegistry.GetDeployment(deploymentID)

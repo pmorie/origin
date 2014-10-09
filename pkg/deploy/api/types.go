@@ -26,6 +26,7 @@ type DeploymentTemplate struct {
 // DeploymentState decribes the possible states a Deployment can be in.
 type DeploymentState string
 
+// TODO: review which of these states are needed.
 const (
 	DeploymentStateNew       DeploymentState = "New"
 	DeploymentStatePending   DeploymentState = "Pending"
@@ -55,7 +56,7 @@ type DeploymentTriggerPolicy struct {
 }
 
 type DeploymentTriggerImageChangeParams struct {
-	Automatic      bool     `json:"auto,omitempty" yaml:"auto,omitempty"`
+	Automatic      bool     `json:"automatic,omitempty" yaml:"automatic,omitempty"`
 	ContainerNames []string `json:"containerNames,omitempty" yaml:"containerNames,omitempty"`
 	RepositoryName string   `json:"repositoryName,omitempty" yaml:"repositoryName,omitempty"`
 	Tag            string   `json:"tag,omitempty" yaml:"tag,omitempty"`

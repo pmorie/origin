@@ -144,7 +144,7 @@ func (c *Fake) DeleteDeploymentConfig(ctx api.Context, id string) error {
 }
 
 func (c *Fake) GenerateDeploymentConfig(ctx api.Context, id string) (*deployapi.DeploymentConfig, error) {
-	// TODO: implement
+	c.Actions = append(c.Actions, FakeAction{Action: "generate-deploymentconfig"})
 	return nil, nil
 }
 
