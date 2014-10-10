@@ -22,8 +22,8 @@ import (
 	"github.com/openshift/origin/pkg/api/v1beta1"
 	osclient "github.com/openshift/origin/pkg/client"
 
-	deploy "github.com/openshift/origin/pkg/deploy"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
@@ -443,8 +443,8 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 	openshift.stopControllers = make(chan struct{})
 
 	go func() {
-		deployConfigController := deploy.NewDeploymentConfigController(osClient)
-		deployTriggerController := deploy.NewDeploymentTriggerController(osClient)
+		deployConfigController := deploycontroller.NewDeploymentConfigController(osClient)
+		deployTriggerController := deploycontroller.NewDeploymentTriggerController(osClient)
 
 		go deployConfigController.SyncDeploymentConfigs()
 		go deployTriggerController.SyncDeploymentTriggers()

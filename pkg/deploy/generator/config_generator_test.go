@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"errors"
 	kubeapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deploytest "github.com/openshift/origin/pkg/deploy/registry/test"
@@ -85,6 +86,7 @@ func TestGenerateFromMissingDeploymentConfig(t *testing.T) {
 	imageRepoRegistry := imagetest.NewImageRepositoryRegistry()
 
 	imageRepoRegistry.ImageRepositories = basicImageRepo()
+	deploymentConfigRegistry.Err = errors.New("DeploymentConfig not found")
 
 	generator := NewDeploymentConfigGenerator(deploymentRegistry, deploymentConfigRegistry, imageRepoRegistry)
 
