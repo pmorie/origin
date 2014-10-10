@@ -12,9 +12,12 @@ import (
 	"github.com/golang/glog"
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deploytrigger "github.com/openshift/origin/pkg/deploy/trigger"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
+
+// TODO: refactor to upstream client/cache Reflector/Store pattern
 
 // Cache of config ID -> deploymentConfig
 type deploymentConfigCache struct {
@@ -56,19 +59,6 @@ func (c *deploymentConfigCache) cachedConfig(id string) deployapi.DeploymentConf
 	return c.store[id]
 }
 
-// A filter for deployment config IDs
-type deploymentConfigTriggers struct {
-	util.StringSet
-}
-
-func newDeploymentConfigTriggers() deploymentConfigTriggers {
-	return deploymentConfigTriggers{util.StringSet{}}
-}
-
-func (t *deploymentConfigTriggers) fire(config *deployapi.DeploymentConfig) bool {
-	return t.Has(config.ID)
-}
-
 // A cache of DockerImageRepository -> ImageRepository
 type imageRepoCache struct {
 	store map[string]imageapi.ImageRepository
@@ -105,96 +95,14 @@ func (c *imageRepoCache) cachedRepo(name string) imageapi.ImageRepository {
 	return c.store[name]
 }
 
-// Image repo triggers
-type imageRepoTriggers struct {
-	reposToConfigs map[string]util.StringSet
-	configsToRepos map[string]util.StringSet
-}
-
-func newImageRepoTriggers() imageRepoTriggers {
-	return imageRepoTriggers{
-		make(map[string]util.StringSet),
-		make(map[string]util.StringSet),
-	}
-}
-
-func (t *imageRepoTriggers) insert(configID string, repoIDs util.StringSet) {
-	for _, repoID := range repoIDs.List() {
-		configs, ok := t.reposToConfigs[repoID]
-		if !ok {
-			configs = util.StringSet{}
-		}
-		configs.Insert(configID)
-		t.reposToConfigs[repoID] = configs
-
-		repos, ok := t.configsToRepos[configID]
-		if !ok {
-			repos = util.StringSet{}
-		}
-		repos.Insert(repoID)
-		t.configsToRepos[configID] = repos
-	}
-}
-
-func (t *imageRepoTriggers) configsForRepo(id string) util.StringSet {
-	return t.reposToConfigs[id]
-}
-
-func (t *imageRepoTriggers) reposForConfig(id string) util.StringSet {
-	return t.configsToRepos[id]
-}
-
-func (t *imageRepoTriggers) remove(configID string, repoIDs util.StringSet) {
-	referencedRepos := t.configsToRepos[configID]
-
-	for _, repoID := range repoIDs.List() {
-		configs := t.reposToConfigs[repoID]
-
-		configs.Delete(configID)
-		if len(configs) == 0 {
-			delete(t.reposToConfigs, repoID)
-		}
-
-		referencedRepos.Delete(repoID)
-		if len(referencedRepos) == 0 {
-			delete(t.configsToRepos, configID)
-		}
-	}
-}
-
-func (t *imageRepoTriggers) hasRegisteredTriggers(repo *imageapi.ImageRepository) bool {
-	id := repo.DockerImageRepository
-
-	if _, ok := t.reposToConfigs[id]; ok {
-		return true
-	}
-
-	return false
-}
-
-func (t *imageRepoTriggers) fire(
-	repo *imageapi.ImageRepository,
-	config *deployapi.DeploymentConfig,
-	deployment *deployapi.Deployment) bool {
-
-	var (
-		repoName               = repo.DockerImageRepository
-		referencedImageVersion = deployutil.ReferencedImages(deployment)[repo.DockerImageRepository]
-		params                 = deployutil.ParamsForImageChangeTrigger(config, repoName)
-		latestTagVersion       = repo.Tags[params.Tag]
-	)
-
-	return referencedImageVersion != latestTagVersion
-}
-
 // A DeploymentTriggerController is responsible for implementing the triggers registered by DeploymentConfigs
 type DeploymentTriggerController struct {
 	osClient          osclient.Interface
 	imageRepoCache    imageRepoCache
-	imageRepoTriggers imageRepoTriggers
+	imageRepoTriggers deploytrigger.ImageRepoTriggers
 	imageRepoWatch    watch.Interface
 	configCache       deploymentConfigCache
-	configTriggers    deploymentConfigTriggers
+	configTriggers    deploytrigger.DeploymentConfigTriggers
 	deployConfigWatch watch.Interface
 	shutdown          chan struct{}
 }
@@ -204,9 +112,9 @@ func NewDeploymentTriggerController(osClient osclient.Interface) *DeploymentTrig
 	return &DeploymentTriggerController{
 		osClient:          osClient,
 		imageRepoCache:    newImageRepoCache(),
-		imageRepoTriggers: newImageRepoTriggers(),
+		imageRepoTriggers: deploytrigger.NewImageRepoTriggers(),
 		configCache:       newDeploymentConfigCache(),
-		configTriggers:    newDeploymentConfigTriggers(),
+		configTriggers:    deploytrigger.NewDeploymentConfigTriggers(),
 	}
 }
 
@@ -408,7 +316,7 @@ func (c *DeploymentTriggerController) watchDeploymentConfigs(ctx kapi.Context) {
 				continue
 			}
 
-			if c.configTriggers.fire(config) {
+			if c.configTriggers.Fire(config) {
 				glog.Infof("regenerating deploymentConfig %v", config.ID)
 				err := c.regenerate(ctx, config.ID)
 				if err != nil {
@@ -433,11 +341,11 @@ func (c *DeploymentTriggerController) refreshImageRepoChangeTriggers(config *dep
 	glog.Infof("deploymentConfig %v references imageRepositories %v", configID, currentRepoIDs)
 
 	// Refresh the image repo imageRepoTriggers
-	c.imageRepoTriggers.insert(configID, currentRepoIDs)
+	c.imageRepoTriggers.Insert(configID, currentRepoIDs)
 
 	// Delete triggers for the removed image repos
-	deletedRepoIDs := deployutil.Difference(c.imageRepoTriggers.reposForConfig(configID), currentRepoIDs)
-	c.imageRepoTriggers.remove(configID, deletedRepoIDs)
+	deletedRepoIDs := deployutil.Difference(c.imageRepoTriggers.ReposForConfig(configID), currentRepoIDs)
+	c.imageRepoTriggers.Remove(configID, deletedRepoIDs)
 }
 
 func (c *DeploymentTriggerController) refreshConfigChangeTriggers(config *deployapi.DeploymentConfig) {
@@ -482,7 +390,7 @@ func (c *DeploymentTriggerController) watchImageRepositories(ctx kapi.Context) {
 				continue
 			}
 
-			if c.imageRepoTriggers.hasRegisteredTriggers(imageRepo) {
+			if c.imageRepoTriggers.HasRegisteredTriggers(imageRepo) {
 				c.handleImageRepoWatch(ctx, imageRepo)
 			} else {
 				glog.Infof("Repository %v has no registered triggers, skipping")
@@ -494,7 +402,7 @@ func (c *DeploymentTriggerController) watchImageRepositories(ctx kapi.Context) {
 func (c *DeploymentTriggerController) handleImageRepoWatch(ctx kapi.Context, repo *imageapi.ImageRepository) {
 	id := repo.DockerImageRepository
 	glog.Infof("Handling triggers for imageRepository %#v:", repo)
-	configs := c.imageRepoTriggers.configsForRepo(id)
+	configs := c.imageRepoTriggers.ConfigsForRepo(id)
 	glog.Infof("configs: %v", configs)
 	for _, configID := range configs.List() {
 		// TODO: handle not-in-cache error
@@ -505,7 +413,7 @@ func (c *DeploymentTriggerController) handleImageRepoWatch(ctx kapi.Context, rep
 			continue
 		}
 
-		if c.imageRepoTriggers.fire(repo, &config, latestDeployment) {
+		if c.imageRepoTriggers.Fire(repo, &config, latestDeployment) {
 			glog.Infof("Regeneratoring deploymentConfig %v", configID)
 			err := c.regenerate(ctx, configID)
 			if err != nil {

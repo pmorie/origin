@@ -188,7 +188,6 @@ func retry(maxAttempts int, delay time.Duration, f func() bool, label string) bo
 		if f() {
 			return true
 		}
-
 		time.Sleep(delay)
 		glog.Infof("Retrying '%s' (attempt %d of %d)...", label, (i + 1), maxAttempts)
 	}
