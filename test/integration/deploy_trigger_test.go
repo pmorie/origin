@@ -23,7 +23,10 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
-	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
+	deployconfigtrigger "github.com/openshift/origin/pkg/deploy/configchangetrigger"
+	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
+	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
+	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
@@ -221,6 +224,8 @@ func TestSuccessfulManualDeployment(t *testing.T) {
 		t.Fatalf("Couldn't subscribe to Deployments: %v", err)
 	}
 
+	openshift.DeploymentConfigController.HandleDeploymentConfig()
+
 	event := <-watch.ResultChan()
 
 	deployment := event.Object.(*deployapi.Deployment)
@@ -323,6 +328,8 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 		t.Fatalf("Couldn't subscribe to Deployments %v", err)
 	}
 
+	openshift.DeploymentConfigController.HandleDeploymentConfig()
+
 	event := <-watch.ResultChan()
 
 	// verify the initial deployment exists
@@ -344,6 +351,9 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 	if _, err := openshift.Client.UpdateDeploymentConfig(ctx, config); err != nil {
 		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
 	}
+
+	openshift.ConfigChangeTriggerController.HandleDeploymentConfig()
+	openshift.DeploymentConfigController.HandleDeploymentConfig()
 
 	event = <-watch.ResultChan()
 	deployment = event.Object.(*deployapi.Deployment)
@@ -373,15 +383,13 @@ func (p *podInfoGetter) GetPodInfo(host, podID string) (kapi.PodInfo, error) {
 }
 
 type testOpenshift struct {
-	Client          *osclient.Client
-	server          *httptest.Server
-	stopControllers chan struct{}
+	Client                        *osclient.Client
+	server                        *httptest.Server
+	DeploymentConfigController    *deployconfigcontroller.DeploymentConfigController
+	ConfigChangeTriggerController *deployconfigtrigger.ConfigChangeTriggerController
 }
 
 func (o *testOpenshift) Shutdown() {
-	close(o.stopControllers)
-	o.server.CloseClientConnections()
-	o.server.Close()
 	deleteAllEtcdKeys()
 	glog.Info("Destroyed test openshift")
 }
@@ -438,22 +446,13 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 		t.Errorf("Expected %#v, got %#v", e, a)
 	}
 
-	// start controllers
-	openshift.stopControllers = make(chan struct{})
+	deployConfigFactory := deployconfigcontrollerfactory.ConfigFactory{osClient}
+	deployConfigControllerConfig := deployConfigFactory.Create()
+	openshift.DeploymentConfigController = deployconfigcontroller.New(deployConfigControllerConfig)
 
-	go func() {
-		deployConfigController := deploycontroller.NewDeploymentConfigController(osClient)
-		deployTriggerController := deploycontroller.NewDeploymentTriggerController(osClient)
-
-		go deployConfigController.SyncDeploymentConfigs()
-		go deployTriggerController.SyncDeploymentTriggers()
-
-		<-openshift.stopControllers
-
-		glog.Info("Shutting down test controllers")
-		deployConfigController.Shutdown()
-		deployTriggerController.Shutdown()
-	}()
+	configTriggerFactory := deployconfigtriggerfactory.ConfigFactory{osClient}
+	configTriggerControllerConfig := configTriggerFactory.Create()
+	openshift.ConfigChangeTriggerController = deployconfigtrigger.New(configTriggerControllerConfig)
 
 	return openshift
 }
