@@ -10,7 +10,7 @@ import (
   "github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
   osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
-  deploycontroller "github.com/openshift/origin/pkg/deploy/deploymentcontroller"
+  deploycontroller "github.com/openshift/origin/pkg/deploy/deploycontroller"
 )
 
 type ConfigFactory struct {
