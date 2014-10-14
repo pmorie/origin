@@ -1,4 +1,4 @@
-package controller
+package imagechangetrigger
 
 import (
 	"errors"
@@ -21,23 +21,22 @@ type Config struct {
 	DeploymentConfigStore cache.Store
 }
 
-// A DeploymentTriggerController is responsible for implementing the triggers registered by DeploymentConfigs
-type DeploymentTriggerController struct {
+type ImageChangeTriggerController struct {
 	config *Config
 }
 
 // NewDeploymentTriggerController creates a new DeploymentTriggerController.
-func New(config *Config) *DeploymentTriggerController {
-	return &DeploymentTriggerController{
+func New(config *Config) *ImageChangeTriggerController {
+	return &ImageChangeTriggerController{
 		config: config,
 	}
 }
 
-func (c *DeploymentTriggerController) Run() {
+func (c *ImageChangeTriggerController) Run() {
 	go util.Forever(c.OneImageRepo, 0)
 }
 
-func (c *DeploymentTriggerController) OneImageRepo() {
+func (c *ImageChangeTriggerController) OneImageRepo() {
 	imageRepo := c.config.NextImageRepository()
 	configIDs := []string{}
 
@@ -66,6 +65,28 @@ func (c *DeploymentTriggerController) OneImageRepo() {
 	}
 }
 
+func (c *ImageChangeTriggerController) regenerate(ctx kapi.Context, configID string) error {
+	newConfig, err := c.config.Client.GenerateDeploymentConfig(ctx, configID)
+	if err != nil {
+		glog.Errorf("Error generating new version of deploymentConfig %v", configID)
+		return err
+	}
+
+	if newConfig == nil {
+		glog.Errorf("Generator returned nil for config %s", configID)
+		return errors.New("Generator returned nil")
+	}
+
+	ctx = kapi.WithNamespace(ctx, newConfig.Namespace)
+	_, err = c.config.Client.UpdateDeploymentConfig(ctx, newConfig)
+	if err != nil {
+		glog.Errorf("Error updating deploymentConfig %v", configID)
+		return err
+	}
+
+	return nil
+}
+
 func parseImage(name string) (string, string) {
 	split := strings.Split(name, ":")
 	if len(split) != 2 {
@@ -91,26 +112,4 @@ func configImageTriggers(config *deployapi.DeploymentConfig) []deployapi.Deploym
 	}
 
 	return res
-}
-
-func (c *DeploymentTriggerController) regenerate(ctx kapi.Context, configID string) error {
-	newConfig, err := c.config.Client.GenerateDeploymentConfig(ctx, configID)
-	if err != nil {
-		glog.Errorf("Error generating new version of deploymentConfig %v", configID)
-		return err
-	}
-
-	if newConfig == nil {
-		glog.Errorf("Generator returned nil for config %s", configID)
-		return errors.New("Generator returned nil")
-	}
-
-	ctx = kapi.WithNamespace(ctx, newConfig.Namespace)
-	_, err = c.config.Client.UpdateDeploymentConfig(ctx, newConfig)
-	if err != nil {
-		glog.Errorf("Error updating deploymentConfig %v", configID)
-		return err
-	}
-
-	return nil
 }
