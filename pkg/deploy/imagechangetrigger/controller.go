@@ -42,7 +42,6 @@ func (c *ImageChangeTriggerController) OneImageRepo() {
 
 	for _, c := range c.config.DeploymentConfigStore.List() {
 		config := c.(*deployapi.DeploymentConfig)
-
 		for _, params := range configImageTriggers(config) {
 			for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
 				repoName, tag := parseImage(container.Image)
@@ -88,12 +87,12 @@ func (c *ImageChangeTriggerController) regenerate(ctx kapi.Context, configID str
 }
 
 func parseImage(name string) (string, string) {
-	split := strings.Split(name, ":")
-	if len(split) != 2 {
+	index := strings.LastIndex(name, ":")
+	if index == -1 {
 		return "", ""
 	}
 
-	return split[0], split[1]
+	return name[:index], name[index+1:]
 }
 
 func configImageTriggers(config *deployapi.DeploymentConfig) []deployapi.DeploymentTriggerImageChangeParams {
