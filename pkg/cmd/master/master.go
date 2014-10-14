@@ -50,10 +50,11 @@ import (
 	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
 	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
 	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
-	deploytriggercontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploycontroller "github.com/openshift/origin/pkg/deploy/deploycontroller"
 	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/deploycontroller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
+	deployimagechangetrigger "github.com/openshift/origin/pkg/deploy/imagechangetrigger"
+	deployimagechangetriggerfactory "github.com/openshift/origin/pkg/deploy/imagechangetrigger/factory"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -190,7 +191,7 @@ func (c *config) startAllInOne() {
 	c.runBuildController()
 	c.runDeploymentController()
 	c.runDeploymentConfigController()
-	c.runDeploymentTriggerController()
+	c.runDeploymentImageChangeTriggerController()
 
 	select {}
 }
@@ -203,7 +204,7 @@ func (c *config) startMaster() {
 	c.runBuildController()
 	c.runDeploymentController()
 	c.runDeploymentConfigController()
-	c.runDeploymentTriggerController()
+	c.runDeploymentImageChangeTriggerController()
 
 	select {}
 }
@@ -476,26 +477,28 @@ func (c *config) runDeploymentController() {
 	controllerConfig := configFactory.Create()
 
 	controller := deploycontroller.New(controllerConfig)
-	controller.Run(10 * time.Second)
+	controller.Run()
 }
 
 func (c *config) runDeploymentConfigController() {
 	configFactory := deployconfigcontrollerfactory.ConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
 	controller := deployconfigcontroller.New(controllerConfig)
-	controller.Run(10 * time.Second)
+	controller.Run()
 }
 
 func (c *config) runConfigChangeTriggerController() {
 	configFactory := deployconfigtriggerfactory.ConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
 	controller := deployconfigtrigger.New(controllerConfig)
-	controller.Run(10 * time.Second)
+	controller.Run()
 }
 
-func (c *config) runDeploymentTriggerController() {
-	deployTriggerController := deploytriggercontroller.NewDeploymentTriggerController(c.getOsClient())
-	deployTriggerController.Run(30 * time.Second)
+func (c *config) runDeploymentImageChangeTriggerController() {
+	configFactory := deployimagechangetriggerfactory.ConfigFactory{c.getOsClient()}
+	controllerConfig := configFactory.Create()
+	controller := deployimagechangetrigger.New(controllerConfig)
+	controller.Run()
 }
 
 func env(key string, defaultValue string) string {

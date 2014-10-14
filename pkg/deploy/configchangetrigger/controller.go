@@ -1,8 +1,6 @@
 package configchangetrigger
 
 import (
-  "time"
-
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
   cache "github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
   util "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
@@ -30,8 +28,8 @@ func New(config *Config) *ConfigChangeTriggerController {
   }
 }
 
-func (dc *ConfigChangeTriggerController) Run(period time.Duration) {
-  go util.Forever(func() { dc.HandleDeploymentConfig() }, period)
+func (dc *ConfigChangeTriggerController) Run() {
+  go util.Forever(func() { dc.HandleDeploymentConfig() }, 0)
 }
 
 func (dc *ConfigChangeTriggerController) HandleDeploymentConfig() error {
