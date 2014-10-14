@@ -164,7 +164,7 @@ func (c *Fake) CreateDeployment(ctx api.Context, deployment *deployapi.Deploymen
 }
 
 func (c *Fake) UpdateDeployment(ctx api.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
-	c.Actions = append(c.Actions, FakeAction{Action: "update-deployment"})
+	c.Actions = append(c.Actions, FakeAction{Action: "update-deployment", Value: deployment})
 	return &deployapi.Deployment{}, nil
 }
 
