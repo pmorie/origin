@@ -46,11 +46,13 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
+	deployconfigtrigger "github.com/openshift/origin/pkg/deploy/configchangetrigger"
+	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
 	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
 	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
 	deploytriggercontroller "github.com/openshift/origin/pkg/deploy/controller"
-	deploycontroller "github.com/openshift/origin/pkg/deploy/deploymentcontroller"
-	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/deploymentcontroller/factory"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/deploycontroller"
+	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/deploycontroller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
@@ -465,24 +467,30 @@ func (c *config) runDeploymentController() {
 	kubeClient := c.getKubeClient()
 	osClient := c.getOsClient()
 
-	factory := deploycontrollerfactory.ConfigFactory{
+	configFactory := deploycontrollerfactory.ConfigFactory{
 		OsClient:    osClient,
 		KubeClient:  kubeClient,
 		Environment: env,
 	}
 
-	controllerConfig := factory.Create()
+	controllerConfig := configFactory.Create()
 
-	deployController := deploycontroller.New(controllerConfig)
-	deployController.Run(10 * time.Second)
+	controller := deploycontroller.New(controllerConfig)
+	controller.Run(10 * time.Second)
 }
 
 func (c *config) runDeploymentConfigController() {
-	factory := deployconfigcontrollerfactory.ConfigFactory{c.getOsClient()}
-	controllerConfig := factory.Create()
-	deployConfigController := deployconfigcontroller.New(controllerConfig)
+	configFactory := deployconfigcontrollerfactory.ConfigFactory{c.getOsClient()}
+	controllerConfig := configFactory.Create()
+	controller := deployconfigcontroller.New(controllerConfig)
+	controller.Run(10 * time.Second)
+}
 
-	deployConfigController.Run()
+func (c *config) runConfigChangeTriggerController() {
+	configFactory := deployconfigtriggerfactory.ConfigFactory{c.getOsClient()}
+	controllerConfig := configFactory.Create()
+	controller := deployconfigtrigger.New(controllerConfig)
+	controller.Run(10 * time.Second)
 }
 
 func (c *config) runDeploymentTriggerController() {
