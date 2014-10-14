@@ -139,7 +139,7 @@ func (dc *DeploymentController) checkForTerminatedDeploymentPod(deployment *depl
 		}
 	}
 
-	if deployment.State == deployapi.DeploymentStateComplete {
+	if nextState == deployapi.DeploymentStateComplete {
 		podID := deploymentPodID(deployment)
 		glog.Infof("Removing deployment pod for ID %v", podID)
 		dc.config.KubeClient.DeletePod(kapi.NewContext(), podID)
