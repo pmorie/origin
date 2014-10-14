@@ -1,4 +1,4 @@
-package controller
+package configcontroller
 
 import (
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -22,9 +22,6 @@ type Config struct {
 
 	// Blocks until the next DeploymentConfig is available
 	NextDeploymentConfig func() *deployapi.DeploymentConfig
-
-	// Error-handler function
-	ErrorFunc func(*deployapi.DeploymentConfig, error)
 }
 
 // New creates a new DeploymentConfigController.
@@ -54,7 +51,7 @@ func (c *DeploymentConfigController) HandleDeploymentConfig() {
 
 	err = c.deploy(ctx, config)
 	if err != nil {
-		c.config.ErrorFunc(config, err)
+		glog.Errorf("Error deploying config %s: %v", config.ID, err)
 	}
 }
 
