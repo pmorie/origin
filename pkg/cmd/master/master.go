@@ -50,8 +50,8 @@ import (
 	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
 	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
 	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
-	deploycontroller "github.com/openshift/origin/pkg/deploy/deploycontroller"
-	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/deploycontroller/factory"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
+	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
 	deployimagechangetrigger "github.com/openshift/origin/pkg/deploy/imagechangetrigger"
 	deployimagechangetriggerfactory "github.com/openshift/origin/pkg/deploy/imagechangetrigger/factory"
@@ -468,7 +468,7 @@ func (c *config) runDeploymentController() {
 	kubeClient := c.getKubeClient()
 	osClient := c.getOsClient()
 
-	configFactory := deploycontrollerfactory.ConfigFactory{
+	configFactory := deploycontrollerfactory.DeploymentControllerConfigFactory{
 		OsClient:    osClient,
 		KubeClient:  kubeClient,
 		Environment: env,
@@ -476,7 +476,7 @@ func (c *config) runDeploymentController() {
 
 	controllerConfig := configFactory.Create()
 
-	controller := deploycontroller.New(controllerConfig)
+	controller := deploycontroller.NewDeploymentController(controllerConfig)
 	controller.Run()
 }
 

@@ -1,4 +1,4 @@
-package deploymentcontroller
+package controller
 
 import (
   "testing"
@@ -52,20 +52,20 @@ func (c *FakeKubeClient) CreatePod(ctx kapi.Context, pod *kapi.Pod) (*kapi.Pod, 
   return pod, nil
 }
 
-type TestHelper struct {
+type dcTestHelper struct {
   OsClient             *osclient.Fake
   KubeClient           *FakeKubeClient
   Deployment           *deployapi.Deployment
   DeploymentController *DeploymentController
 }
 
-func NewTestHelper() *TestHelper {
+func newDCTestHelper() *dcTestHelper {
   osClient := &osclient.Fake{}
   kClient := &FakeKubeClient{}
 
   deployment := basicDeployment()
 
-  config := &Config{
+  config := &DeploymentControllerConfig{
     OsClient:    osClient,
     KubeClient:  kClient,
     Environment: []kapi.EnvVar{},
@@ -83,7 +83,7 @@ func NewTestHelper() *TestHelper {
 }
 
 func TestHandleNewDeployment(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCTestHelper()
 
   // Verify new -> pending
   helper.DeploymentController.HandleDeployment()
@@ -99,7 +99,7 @@ func TestHandleNewDeployment(t *testing.T) {
 }
 
 func TestHandlePendingDeploymentPendingPod(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCTestHelper()
 
   // Verify pending -> pending given the pod isn't yet running
   helper.Deployment.State = deployapi.DeploymentStatePending
@@ -117,7 +117,7 @@ func TestHandlePendingDeploymentPendingPod(t *testing.T) {
 }
 
 func TestHandlePendingDeploymentRunningPod(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCTestHelper()
 
   // Verify pending -> running now that the pod is running
   helper.Deployment.State = deployapi.DeploymentStatePending
@@ -135,7 +135,7 @@ func TestHandlePendingDeploymentRunningPod(t *testing.T) {
 }
 
 func TestHandleRunningDeploymentRunningPod(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCTestHelper()
 
   // Verify running -> running as the pod is still running
   helper.Deployment.State = deployapi.DeploymentStateRunning
@@ -153,7 +153,7 @@ func TestHandleRunningDeploymentRunningPod(t *testing.T) {
 }
 
 func TestHandleRunningDeploymentTerminatedOkPod(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCTestHelper()
 
   // Verify running -> complete as the pod terminated successfully
   helper.Deployment.State = deployapi.DeploymentStateRunning
@@ -185,7 +185,7 @@ func TestHandleRunningDeploymentTerminatedOkPod(t *testing.T) {
 }
 
 func TestHandleRunningDeploymentTerminatedFailPod(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCTestHelper()
 
   // Verify running -> complete as the pod terminated successfully
   helper.Deployment.State = deployapi.DeploymentStateRunning

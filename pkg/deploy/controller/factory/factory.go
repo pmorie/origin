@@ -10,23 +10,23 @@ import (
   "github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
   osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
-  deploycontroller "github.com/openshift/origin/pkg/deploy/deploycontroller"
+  "github.com/openshift/origin/pkg/deploy/controller"
 )
 
-type ConfigFactory struct {
+type DeploymentControllerConfigFactory struct {
   OsClient    osclient.Interface
   KubeClient  kubeclient.Interface
   Environment []kapi.EnvVar
 }
 
-func (config *ConfigFactory) Create() *deploycontroller.Config {
+func (factory *DeploymentControllerConfigFactory) Create() *controller.DeploymentControllerConfig {
   queue := cache.NewFIFO()
-  cache.NewReflector(&deploymentLW{config.OsClient}, &deployapi.Deployment{}, queue).Run()
+  cache.NewReflector(&deploymentLW{factory.OsClient}, &deployapi.Deployment{}, queue).Run()
 
-  return &deploycontroller.Config{
-    OsClient:    config.OsClient,
-    KubeClient:  config.KubeClient,
-    Environment: config.Environment,
+  return &controller.DeploymentControllerConfig{
+    OsClient:    factory.OsClient,
+    KubeClient:  factory.KubeClient,
+    Environment: factory.Environment,
     NextDeployment: func() *deployapi.Deployment {
       return queue.Pop().(*deployapi.Deployment)
     },
