@@ -8,21 +8,21 @@ import (
   "github.com/GoogleCloudPlatform/kubernetes/pkg/watch"
   osclient "github.com/openshift/origin/pkg/client"
   api "github.com/openshift/origin/pkg/deploy/api"
-  controller "github.com/openshift/origin/pkg/deploy/configchangetrigger"
+  "github.com/openshift/origin/pkg/deploy/controller"
 )
 
-type ConfigFactory struct {
+type ConfigChangeTriggerControllerConfigFactory struct {
   OsClient osclient.Interface
 }
 
-func (factory *ConfigFactory) Create() *controller.Config {
+func (factory *ConfigChangeTriggerControllerConfigFactory) Create() *controller.ConfigChangeTriggerControllerConfig {
   queue := cache.NewFIFO()
   cache.NewReflector(&deploymentConfigLW{factory.OsClient}, &api.DeploymentConfig{}, queue).Run()
 
   store := cache.NewStore()
   cache.NewReflector(&deploymentLW{factory.OsClient}, &api.Deployment{}, store).Run()
 
-  return &controller.Config{
+  return &controller.ConfigChangeTriggerControllerConfig{
     OsClient: factory.OsClient,
     NextDeploymentConfig: func() *api.DeploymentConfig {
       return queue.Pop().(*api.DeploymentConfig)

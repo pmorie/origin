@@ -102,9 +102,9 @@ func (c *dccFakeOsClient) CreateDeployment(ctx kapi.Context, deployment *deploya
 }
 
 type dccTestHelper struct {
-  OsClient                   *dccFakeOsClient
-  DeploymentConfig           *deployapi.DeploymentConfig
-  DeploymentConfigController *DeploymentConfigController
+  OsClient         *dccFakeOsClient
+  DeploymentConfig *deployapi.DeploymentConfig
+  Controller       *DeploymentConfigController
 }
 
 func newDCCTestHelper() *dccTestHelper {
@@ -120,9 +120,9 @@ func newDCCTestHelper() *dccTestHelper {
   }
 
   return &dccTestHelper{
-    OsClient:                   osClient,
-    DeploymentConfig:           deploymentConfig,
-    DeploymentConfigController: New(config),
+    OsClient:         osClient,
+    DeploymentConfig: deploymentConfig,
+    Controller:       NewDeploymentConfigController(config),
   }
 }
 
@@ -131,7 +131,7 @@ func TestHandleNewDeploymentConfig(t *testing.T) {
 
   helper.DeploymentConfig.LatestVersion = 0
 
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   if len(helper.OsClient.Actions) != 0 {
     t.Fatalf("expected no client activity, found: %s", helper.OsClient.Actions)
@@ -144,7 +144,7 @@ func TestHandleInitialDeployment(t *testing.T) {
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Error = kerrors.NewNotFound("deployment", "id")
 
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   if e, a := helper.DeploymentConfig.ID, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).Labels[deployapi.DeploymentConfigIDLabel]; e != a {
     t.Fatalf("expected deployment with label %s, got %s", e, a)
@@ -159,7 +159,7 @@ func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
 
   // verify that no new deployment was made due to a lack
   // of differences in the pod templates
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   for _, a := range helper.OsClient.Actions {
     if a.Action == "create-deployment" {
@@ -176,7 +176,7 @@ func TestHandleConfigChangeWithPodTemplateDiff(t *testing.T) {
   helper.DeploymentConfig.Template.ControllerTemplate.PodTemplate.Labels["foo"] = "bar"
 
   // verify that a new deployment results from the change in config
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   if e, a := helper.DeploymentConfig.ID, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).Labels[deployapi.DeploymentConfigIDLabel]; e != a {
     t.Fatalf("expected deployment with label %s, got %s", e, a)

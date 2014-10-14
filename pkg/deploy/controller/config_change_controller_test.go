@@ -1,4 +1,4 @@
-package configchangetrigger
+package controller
 
 import (
   "testing"
@@ -9,33 +9,33 @@ import (
   deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
 
-type TestHelper struct {
+type cctcTestHelper struct {
   Client           *FakeOsClient
   DeploymentConfig *deployapi.DeploymentConfig
   Controller       *ConfigChangeTriggerController
 }
 
-func NewTestHelper() *TestHelper {
+func newCctcTestHelper() *cctcTestHelper {
   client := &FakeOsClient{}
-  helper := &TestHelper{
+  helper := &cctcTestHelper{
     Client:           client,
     DeploymentConfig: initialConfig(),
   }
-  config := &Config{
+  config := &ConfigChangeTriggerControllerConfig{
     OsClient: client,
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return helper.DeploymentConfig
     },
     DeploymentStore: newFakeStore(),
   }
-  helper.Controller = New(config)
+  helper.Controller = NewConfigChangeTriggerController(config)
 
   return helper
 }
 
 // Test the controller's response to a new DeploymentConfig
-func TestNewDeploymentConfig(t *testing.T) {
-  helper := NewTestHelper()
+func TestNewConfig(t *testing.T) {
+  helper := newCctcTestHelper()
   helper.Controller.HandleDeploymentConfig()
 
   if len(helper.Client.Actions) != 0 {
@@ -45,7 +45,7 @@ func TestNewDeploymentConfig(t *testing.T) {
 
 // Test the controller's response when the pod template is changed
 func TestChangeWithTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newCctcTestHelper()
   helper.Controller.HandleDeploymentConfig()
   helper.DeploymentConfig = diffedConfig()
   helper.Controller.HandleDeploymentConfig()
@@ -64,7 +64,7 @@ func TestChangeWithTemplateDiff(t *testing.T) {
 }
 
 func TestChangeWithoutTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newCctcTestHelper()
   helper.Controller.HandleDeploymentConfig()
   helper.Controller.HandleDeploymentConfig()
 
@@ -199,7 +199,7 @@ func generatedConfig() *deployapi.DeploymentConfig {
   }
 }
 
-func matchingDeployment() *deployapi.Deployment {
+func matchingInitialDeployment() *deployapi.Deployment {
   return &deployapi.Deployment{
     JSONBase: kapi.JSONBase{ID: "manual-deploy-config-1"},
     State:    deployapi.DeploymentStateNew,
@@ -256,7 +256,7 @@ type fakeStore struct {
 }
 
 func newFakeStore() fakeStore {
-  return fakeStore{matchingDeployment()}
+  return fakeStore{matchingInitialDeployment()}
 }
 
 func (s fakeStore) Add(id string, obj interface{})    {}

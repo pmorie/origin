@@ -46,8 +46,6 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
-	deployconfigtrigger "github.com/openshift/origin/pkg/deploy/configchangetrigger"
-	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
 	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
@@ -486,9 +484,9 @@ func (c *config) runDeploymentConfigController() {
 }
 
 func (c *config) runConfigChangeTriggerController() {
-	configFactory := deployconfigtriggerfactory.ConfigFactory{c.getOsClient()}
+	configFactory := deploycontrollerfactory.ConfigChangeTriggerControllerConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
-	controller := deployconfigtrigger.New(controllerConfig)
+	controller := deploycontroller.NewConfigChangeTriggerController(controllerConfig)
 	controller.Run()
 }
 
