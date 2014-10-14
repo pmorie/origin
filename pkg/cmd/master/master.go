@@ -48,8 +48,6 @@ import (
 	"github.com/openshift/origin/pkg/cmd/util/docker"
 	deployconfigtrigger "github.com/openshift/origin/pkg/deploy/configchangetrigger"
 	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
-	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
-	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
 	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
@@ -481,9 +479,9 @@ func (c *config) runDeploymentController() {
 }
 
 func (c *config) runDeploymentConfigController() {
-	configFactory := deployconfigcontrollerfactory.ConfigFactory{c.getOsClient()}
+	configFactory := deploycontrollerfactory.DeploymentConfigControllerConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
-	controller := deployconfigcontroller.New(controllerConfig)
+	controller := deploycontroller.NewDeploymentConfigController(controllerConfig)
 	controller.Run()
 }
 

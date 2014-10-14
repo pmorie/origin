@@ -1,4 +1,4 @@
-package configcontroller
+package controller
 
 import (
   "testing"
@@ -86,40 +86,40 @@ func matchingDeployment() *deployapi.Deployment {
   }
 }
 
-type FakeOsClient struct {
+type dccFakeOsClient struct {
   osclient.Fake
   Deployment *deployapi.Deployment
   Error      error
 }
 
-func (c *FakeOsClient) GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error) {
+func (c *dccFakeOsClient) GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error) {
   return c.Deployment, c.Error
 }
 
-func (c *FakeOsClient) CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+func (c *dccFakeOsClient) CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "create-deployment", Value: deployment})
   return deployment, c.Error
 }
 
-type TestHelper struct {
-  OsClient                   *FakeOsClient
+type dccTestHelper struct {
+  OsClient                   *dccFakeOsClient
   DeploymentConfig           *deployapi.DeploymentConfig
   DeploymentConfigController *DeploymentConfigController
 }
 
-func NewTestHelper() *TestHelper {
-  osClient := &FakeOsClient{}
+func newDCCTestHelper() *dccTestHelper {
+  osClient := &dccFakeOsClient{}
 
   deploymentConfig := manualDeploymentConfig()
 
-  config := &Config{
+  config := &DeploymentConfigControllerConfig{
     Client: osClient,
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return deploymentConfig
     },
   }
 
-  return &TestHelper{
+  return &dccTestHelper{
     OsClient:                   osClient,
     DeploymentConfig:           deploymentConfig,
     DeploymentConfigController: New(config),
@@ -127,7 +127,7 @@ func NewTestHelper() *TestHelper {
 }
 
 func TestHandleNewDeploymentConfig(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 0
 
@@ -139,7 +139,7 @@ func TestHandleNewDeploymentConfig(t *testing.T) {
 }
 
 func TestHandleInitialDeployment(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Error = kerrors.NewNotFound("deployment", "id")
@@ -152,7 +152,7 @@ func TestHandleInitialDeployment(t *testing.T) {
 }
 
 func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Deployment = matchingDeployment()
@@ -169,7 +169,7 @@ func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
 }
 
 func TestHandleConfigChangeWithPodTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Deployment = matchingDeployment()

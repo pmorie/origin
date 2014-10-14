@@ -1,4 +1,4 @@
-package configcontroller
+package controller
 
 import (
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -12,11 +12,11 @@ import (
 
 // A DeploymentConfigController is responsible for implementing the triggers registered by DeploymentConfigs
 type DeploymentConfigController struct {
-	config *Config
+	config *DeploymentConfigControllerConfig
 }
 
 // Holds the configuration of a DeploymentConfigController
-type Config struct {
+type DeploymentConfigControllerConfig struct {
 	// OpenShift Client
 	Client osclient.Interface
 
@@ -25,7 +25,7 @@ type Config struct {
 }
 
 // New creates a new DeploymentConfigController.
-func New(config *Config) *DeploymentConfigController {
+func NewDeploymentConfigController(config *DeploymentConfigControllerConfig) *DeploymentConfigController {
 	return &DeploymentConfigController{config}
 }
 
