@@ -24,7 +24,8 @@ func (factory *ConfigFactory) Create() *controller.Config {
 	cache.NewReflector(&deploymentConfigLW{factory.Client}, &deployapi.DeploymentConfig{}, store).Run()
 
 	return &controller.Config{
-		Client: factory.Client,
+		Client:                factory.Client,
+		DeploymentConfigStore: store,
 		NextImageRepository: func() *imageapi.ImageRepository {
 			return queue.Pop().(*imageapi.ImageRepository)
 		},

@@ -28,6 +28,8 @@ import (
 	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
 	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
+	deployimagetrigger "github.com/openshift/origin/pkg/deploy/imagechangetrigger"
+	deployimagetriggerfactory "github.com/openshift/origin/pkg/deploy/imagechangetrigger/factory"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -273,6 +275,8 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 		t.Fatalf("Couldn't subscribe to Deployments %v", err)
 	}
 
+	openshift.DeploymentConfigController.HandleDeploymentConfig()
+
 	event := <-watch.ResultChan()
 
 	deployment := event.Object.(*deployapi.Deployment)
@@ -286,6 +290,9 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 	if _, err = openshift.Client.UpdateImageRepository(ctx, imageRepo); err != nil {
 		t.Fatalf("Error updating imageRepo: %v", err)
 	}
+
+	openshift.ImageChangeTriggerController.OneImageRepo()
+	openshift.DeploymentConfigController.HandleDeploymentConfig()
 
 	event = <-watch.ResultChan()
 
@@ -387,6 +394,7 @@ type testOpenshift struct {
 	server                        *httptest.Server
 	DeploymentConfigController    *deployconfigcontroller.DeploymentConfigController
 	ConfigChangeTriggerController *deployconfigtrigger.ConfigChangeTriggerController
+	ImageChangeTriggerController  *deployimagetrigger.ImageChangeTriggerController
 }
 
 func (o *testOpenshift) Shutdown() {
@@ -453,6 +461,10 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 	configTriggerFactory := deployconfigtriggerfactory.ConfigFactory{osClient}
 	configTriggerControllerConfig := configTriggerFactory.Create()
 	openshift.ConfigChangeTriggerController = deployconfigtrigger.New(configTriggerControllerConfig)
+
+	imageTriggerFactory := deployimagetriggerfactory.ConfigFactory{osClient}
+	imageTriggerControllerConfig := imageTriggerFactory.Create()
+	openshift.ImageChangeTriggerController = deployimagetrigger.New(imageTriggerControllerConfig)
 
 	return openshift
 }
