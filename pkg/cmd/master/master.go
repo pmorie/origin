@@ -49,8 +49,6 @@ import (
 	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
-	deployimagechangetrigger "github.com/openshift/origin/pkg/deploy/imagechangetrigger"
-	deployimagechangetriggerfactory "github.com/openshift/origin/pkg/deploy/imagechangetrigger/factory"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -491,9 +489,9 @@ func (c *config) runConfigChangeTriggerController() {
 }
 
 func (c *config) runDeploymentImageChangeTriggerController() {
-	configFactory := deployimagechangetriggerfactory.ConfigFactory{c.getOsClient()}
+	configFactory := deploycontrollerfactory.ImageChangeControllerConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
-	controller := deployimagechangetrigger.New(controllerConfig)
+	controller := deploycontroller.NewImageChangeTriggerController(controllerConfig)
 	controller.Run()
 }
 
