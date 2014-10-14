@@ -53,10 +53,10 @@ func (c *FakeKubeClient) CreatePod(ctx kapi.Context, pod *kapi.Pod) (*kapi.Pod, 
 }
 
 type dcTestHelper struct {
-  OsClient             *osclient.Fake
-  KubeClient           *FakeKubeClient
-  Deployment           *deployapi.Deployment
-  DeploymentController *DeploymentController
+  OsClient   *osclient.Fake
+  KubeClient *FakeKubeClient
+  Deployment *deployapi.Deployment
+  Controller *DeploymentController
 }
 
 func newDCTestHelper() *dcTestHelper {
@@ -74,11 +74,11 @@ func newDCTestHelper() *dcTestHelper {
     },
   }
 
-  return &TestHelper{
-    OsClient:             osClient,
-    KubeClient:           kClient,
-    Deployment:           deployment,
-    DeploymentController: New(config),
+  return &dcTestHelper{
+    OsClient:   osClient,
+    KubeClient: kClient,
+    Deployment: deployment,
+    Controller: NewDeploymentController(config),
   }
 }
 
@@ -86,7 +86,7 @@ func TestHandleNewDeployment(t *testing.T) {
   helper := newDCTestHelper()
 
   // Verify new -> pending
-  helper.DeploymentController.HandleDeployment()
+  helper.Controller.HandleDeployment()
 
   // TODO: stronger assertions on the actual pod
   if e, a := "create-pod", helper.KubeClient.Actions[0].Action; e != a {
@@ -109,7 +109,7 @@ func TestHandlePendingDeploymentPendingPod(t *testing.T) {
     },
   }
 
-  helper.DeploymentController.HandleDeployment()
+  helper.Controller.HandleDeployment()
 
   if len(helper.OsClient.Actions) != 0 {
     t.Fatalf("expected no client actions, found %v", helper.OsClient.Actions)
@@ -127,7 +127,7 @@ func TestHandlePendingDeploymentRunningPod(t *testing.T) {
     },
   }
 
-  helper.DeploymentController.HandleDeployment()
+  helper.Controller.HandleDeployment()
 
   if e, a := deployapi.DeploymentStateRunning, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
     t.Fatalf("expected deployment state %s, got %s", e, a)
@@ -145,7 +145,7 @@ func TestHandleRunningDeploymentRunningPod(t *testing.T) {
     },
   }
 
-  helper.DeploymentController.HandleDeployment()
+  helper.Controller.HandleDeployment()
 
   if len(helper.OsClient.Actions) != 0 {
     t.Fatalf("expected no client actions, found %v", helper.OsClient.Actions)
@@ -172,7 +172,7 @@ func TestHandleRunningDeploymentTerminatedOkPod(t *testing.T) {
     },
   }
 
-  helper.DeploymentController.HandleDeployment()
+  helper.Controller.HandleDeployment()
 
   if e, a := deployapi.DeploymentStateComplete, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
     t.Fatalf("expected deployment state %s, got %s", e, a)
@@ -204,7 +204,7 @@ func TestHandleRunningDeploymentTerminatedFailPod(t *testing.T) {
     },
   }
 
-  helper.DeploymentController.HandleDeployment()
+  helper.Controller.HandleDeployment()
 
   if e, a := deployapi.DeploymentStateFailed, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
     t.Fatalf("expected deployment state %s, got %s", e, a)
