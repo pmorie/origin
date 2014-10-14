@@ -1,8 +1,6 @@
 package deploymentcontroller
 
 import (
-	"time"
-
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	kubeclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 
@@ -32,8 +30,8 @@ func New(config *Config) *DeploymentController {
 }
 
 // Run begins watching and synchronizing deployment states.
-func (dc *DeploymentController) Run(period time.Duration) {
-	go util.Forever(func() { dc.HandleDeployment() }, period)
+func (dc *DeploymentController) Run() {
+	go util.Forever(func() { dc.HandleDeployment() }, 0)
 }
 
 // Invokes the appropriate handler for the current state of the given deployment.

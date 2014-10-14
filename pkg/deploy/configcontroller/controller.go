@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"time"
-
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
@@ -35,8 +33,8 @@ func New(config *Config) *DeploymentConfigController {
 }
 
 // Process deployment config events one at a time
-func (c *DeploymentConfigController) Run(period time.Duration) {
-	go util.Forever(c.HandleDeploymentConfig, period)
+func (c *DeploymentConfigController) Run() {
+	go util.Forever(c.HandleDeploymentConfig, 0)
 }
 
 func (c *DeploymentConfigController) HandleDeploymentConfig() {
