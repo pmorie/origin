@@ -4,73 +4,122 @@ import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
   deploytest "github.com/openshift/origin/pkg/deploy/controller/test"
 )
 
-type cctcTestHelper struct {
-  Client           *FakeOsClient
-  DeploymentConfig *deployapi.DeploymentConfig
-  Controller       *ConfigChangeTriggerController
-}
+// Test the controller's response to a new DeploymentConfig
+func TestNewConfig(t *testing.T) {
+  generated := false
+  updated := false
 
-func newCctcTestHelper() *cctcTestHelper {
-  client := &FakeOsClient{}
-  helper := &cctcTestHelper{
-    Client:           client,
-    DeploymentConfig: initialConfig(),
-  }
-  config := &ConfigChangeTriggerControllerConfig{
-    OsClient: client,
+  controller := &ConfigChangeController{
+    DeploymentConfigInterface: &testDeploymentConfigInterface{
+      GenerateDeploymentConfigFunc: func(id string) (*deployapi.DeploymentConfig, error) {
+        generated = true
+        return nil, nil
+      },
+      UpdateDeploymentConfigFunc: func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+        updated = true
+        return config, nil
+      },
+    },
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
-      return helper.DeploymentConfig
+      return initialConfig()
     },
     DeploymentStore: deploytest.NewFakeDeploymentStore(matchingInitialDeployment()),
   }
-  helper.Controller = NewConfigChangeTriggerController(config)
 
-  return helper
-}
+  controller.HandleDeploymentConfig()
 
-// Test the controller's response to a new DeploymentConfig
-func TestNewConfig(t *testing.T) {
-  helper := newCctcTestHelper()
-  helper.Controller.HandleDeploymentConfig()
+  if generated {
+    t.Error("Unexpected generation of deploymentConfig")
+  }
 
-  if len(helper.Client.Actions) != 0 {
-    t.Fatalf("expected no client activity, found: %s", helper.Client.Actions)
+  if updated {
+    t.Error("Unexpected update of deploymentConfig")
   }
 }
 
 // Test the controller's response when the pod template is changed
 func TestChangeWithTemplateDiff(t *testing.T) {
-  helper := newCctcTestHelper()
-  helper.Controller.HandleDeploymentConfig()
-  helper.DeploymentConfig = diffedConfig()
-  helper.Controller.HandleDeploymentConfig()
+  var (
+    generatedId string
+    updated     *deployapi.DeploymentConfig
+  )
 
-  if num := len(helper.Client.Actions); num != 2 {
-    t.Errorf("Expected 2 actions, got %v", num)
+  controller := &ConfigChangeController{
+    DeploymentConfigInterface: &testDeploymentConfigInterface{
+      GenerateDeploymentConfigFunc: func(id string) (*deployapi.DeploymentConfig, error) {
+        generatedId = id
+        return generatedConfig(), nil
+      },
+      UpdateDeploymentConfigFunc: func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+        updated = config
+        return config, nil
+      },
+    },
+    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
+      return diffedConfig()
+    },
+    DeploymentStore: deploytest.NewFakeDeploymentStore(matchingInitialDeployment()),
   }
 
-  if e, a := "generate-deployment-config", helper.Client.Actions[0].Action; e != a {
-    t.Fatalf("expected %s action, got %s", e, a)
+  controller.HandleDeploymentConfig()
+
+  if generatedId != "test-deploy-config" {
+    t.Fatalf("Unexpected generated config id.  Expected test-deploy-config, got: %v", generatedId)
   }
 
-  if e, a := "update-deployment-config", helper.Client.Actions[1].Action; e != a {
-    t.Fatalf("expected %s action, got %s", e, a)
+  if updated.ID != "test-deploy-config" {
+    t.Fatalf("Unexpected updated config id.  Expected test-deploy-config, got: %v", updated.ID)
   }
 }
 
 func TestChangeWithoutTemplateDiff(t *testing.T) {
-  helper := newCctcTestHelper()
-  helper.Controller.HandleDeploymentConfig()
-  helper.Controller.HandleDeploymentConfig()
+  generated := false
+  updated := false
 
-  if len(helper.Client.Actions) != 0 {
-    t.Fatalf("expected no client activity, found: %s", helper.Client.Actions)
+  controller := &ConfigChangeController{
+    DeploymentConfigInterface: &testDeploymentConfigInterface{
+      GenerateDeploymentConfigFunc: func(id string) (*deployapi.DeploymentConfig, error) {
+        generated = true
+        return nil, nil
+      },
+      UpdateDeploymentConfigFunc: func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+        updated = true
+        return config, nil
+      },
+    },
+    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
+      return initialConfig()
+    },
+    DeploymentStore: deploytest.NewFakeDeploymentStore(matchingInitialDeployment()),
   }
+
+  controller.HandleDeploymentConfig()
+  controller.HandleDeploymentConfig()
+
+  if generated {
+    t.Error("Unexpected generation of deploymentConfig")
+  }
+
+  if updated {
+    t.Error("Unexpected update of deploymentConfig")
+  }
+}
+
+type testDeploymentConfigInterface struct {
+  GenerateDeploymentConfigFunc func(id string) (*deployapi.DeploymentConfig, error)
+  UpdateDeploymentConfigFunc   func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
+}
+
+func (i *testDeploymentConfigInterface) GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error) {
+  return i.GenerateDeploymentConfigFunc(id)
+}
+
+func (i *testDeploymentConfigInterface) UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+  return i.UpdateDeploymentConfigFunc(config)
 }
 
 func initialConfig() *deployapi.DeploymentConfig {
@@ -159,7 +208,7 @@ func diffedConfig() *deployapi.DeploymentConfig {
 
 func generatedConfig() *deployapi.DeploymentConfig {
   return &deployapi.DeploymentConfig{
-    JSONBase: kapi.JSONBase{ID: "manual-deploy-config"},
+    JSONBase: kapi.JSONBase{ID: "test-deploy-config"},
     Triggers: []deployapi.DeploymentTriggerPolicy{
       {
         Type: deployapi.DeploymentTriggerOnConfigChange,
@@ -201,7 +250,7 @@ func generatedConfig() *deployapi.DeploymentConfig {
 
 func matchingInitialDeployment() *deployapi.Deployment {
   return &deployapi.Deployment{
-    JSONBase: kapi.JSONBase{ID: "manual-deploy-config-1"},
+    JSONBase: kapi.JSONBase{ID: "test-deploy-config-1"},
     State:    deployapi.DeploymentStateNew,
     Strategy: deployapi.DeploymentStrategy{
       Type: "customPod",
@@ -233,20 +282,4 @@ func matchingInitialDeployment() *deployapi.Deployment {
       },
     },
   }
-}
-
-type FakeOsClient struct {
-  osclient.Fake
-  DeploymentConfig *deployapi.DeploymentConfig
-  Error            error
-}
-
-func (c *FakeOsClient) GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error) {
-  c.Actions = append(c.Actions, osclient.FakeAction{Action: "generate-deployment-config", Value: id})
-  return c.DeploymentConfig, c.Error
-}
-
-func (c *FakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
-  c.Actions = append(c.Actions, osclient.FakeAction{Action: "update-deployment-config", Value: config})
-  return config, c.Error
 }

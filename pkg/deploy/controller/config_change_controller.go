@@ -5,35 +5,29 @@ import (
   cache "github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
   util "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 
-  osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
   deployutil "github.com/openshift/origin/pkg/deploy/util"
 
   "github.com/golang/glog"
 )
 
-type ConfigChangeTriggerController struct {
-  config *ConfigChangeTriggerControllerConfig
+type ConfigChangeController struct {
+  DeploymentConfigInterface deploymentConfigInterface
+  NextDeploymentConfig      func() *deployapi.DeploymentConfig
+  DeploymentStore           cache.Store
 }
 
-type ConfigChangeTriggerControllerConfig struct {
-  OsClient             osclient.Interface
-  NextDeploymentConfig func() *deployapi.DeploymentConfig
-  DeploymentStore      cache.Store
+type deploymentConfigInterface interface {
+  GenerateDeploymentConfig(kapi.Context, string) (*deployapi.DeploymentConfig, error)
+  UpdateDeploymentConfig(kapi.Context, *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
 }
 
-func NewConfigChangeTriggerController(config *ConfigChangeTriggerControllerConfig) *ConfigChangeTriggerController {
-  return &ConfigChangeTriggerController{
-    config: config,
-  }
-}
-
-func (dc *ConfigChangeTriggerController) Run() {
+func (dc *ConfigChangeController) Run() {
   go util.Forever(func() { dc.HandleDeploymentConfig() }, 0)
 }
 
-func (dc *ConfigChangeTriggerController) HandleDeploymentConfig() error {
-  config := dc.config.NextDeploymentConfig()
+func (dc *ConfigChangeController) HandleDeploymentConfig() error {
+  config := dc.NextDeploymentConfig()
 
   hasChangeTrigger := false
   for _, trigger := range config.Triggers {
@@ -48,18 +42,18 @@ func (dc *ConfigChangeTriggerController) HandleDeploymentConfig() error {
   }
 
   latestDeploymentId := deployutil.LatestDeploymentIDForConfig(config)
-  obj, exists := dc.config.DeploymentStore.Get(latestDeploymentId)
+  obj, exists := dc.DeploymentStore.Get(latestDeploymentId)
 
   if !exists || !deployutil.PodTemplatesEqual(config.Template.ControllerTemplate.PodTemplate,
     obj.(*deployapi.Deployment).ControllerTemplate.PodTemplate) {
     ctx := kapi.WithNamespace(kapi.NewContext(), config.Namespace)
-    newConfig, err := dc.config.OsClient.GenerateDeploymentConfig(ctx, config.ID)
+    newConfig, err := dc.DeploymentConfigInterface.GenerateDeploymentConfig(ctx, config.ID)
     if err != nil {
       glog.Errorf("Error generating new version of deploymentConfig %v", config.ID)
       return err
     }
 
-    _, err = dc.config.OsClient.UpdateDeploymentConfig(ctx, newConfig)
+    _, err = dc.DeploymentConfigInterface.UpdateDeploymentConfig(ctx, newConfig)
     if err != nil {
       glog.Errorf("Error updating deploymentConfig %v", config.ID)
       return err

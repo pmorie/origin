@@ -185,6 +185,7 @@ func (c *config) startAllInOne() {
 	c.runBuildController()
 	c.runDeploymentController()
 	c.runDeploymentConfigController()
+	c.runConfigChangeController()
 	c.runDeploymentImageChangeTriggerController()
 
 	select {}
@@ -198,6 +199,7 @@ func (c *config) startMaster() {
 	c.runBuildController()
 	c.runDeploymentController()
 	c.runDeploymentConfigController()
+	c.runConfigChangeController()
 	c.runDeploymentImageChangeTriggerController()
 
 	select {}
@@ -474,10 +476,9 @@ func (c *config) runDeploymentConfigController() {
 	controller.Run()
 }
 
-func (c *config) runConfigChangeTriggerController() {
-	configFactory := deploycontrollerfactory.ConfigChangeTriggerControllerConfigFactory{c.getOsClient()}
-	controllerConfig := configFactory.Create()
-	controller := deploycontroller.NewConfigChangeTriggerController(controllerConfig)
+func (c *config) runConfigChangeController() {
+	configFactory := deploycontrollerfactory.ConfigChangeControllerFactory{c.getOsClient()}
+	controller := configFactory.Create()
 	controller.Run()
 }
 
