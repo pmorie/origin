@@ -456,21 +456,15 @@ func (c *config) runBuildController() {
 }
 
 func (c *config) runDeploymentController() {
-	env := []api.EnvVar{
-		api.EnvVar{Name: "KUBERNETES_MASTER", Value: "http://" + c.ListenAddr},
-	}
-	kubeClient := c.getKubeClient()
-	osClient := c.getOsClient()
-
-	configFactory := deploycontrollerfactory.DeploymentControllerConfigFactory{
-		OsClient:    osClient,
-		KubeClient:  kubeClient,
-		Environment: env,
+	factory := deploycontrollerfactory.DeploymentControllerFactory{
+		Client:     c.getOsClient(),
+		KubeClient: c.getKubeClient(),
+		Environment: []api.EnvVar{
+			api.EnvVar{Name: "KUBERNETES_MASTER", Value: "http://" + c.ListenAddr},
+		},
 	}
 
-	controllerConfig := configFactory.Create()
-
-	controller := deploycontroller.NewDeploymentController(controllerConfig)
+	controller := factory.Create()
 	controller.Run()
 }
 
