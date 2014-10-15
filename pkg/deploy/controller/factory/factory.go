@@ -14,20 +14,20 @@ import (
   imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-type DeploymentControllerConfigFactory struct {
-  OsClient    osclient.Interface
-  KubeClient  kclient.Interface
+type DeploymentControllerFactory struct {
+  Client      *osclient.Client
+  KubeClient  *kclient.Client
   Environment []kapi.EnvVar
 }
 
-func (factory *DeploymentControllerConfigFactory) Create() *controller.DeploymentControllerConfig {
+func (factory *DeploymentControllerFactory) Create() *controller.DeploymentController {
   queue := cache.NewFIFO()
-  cache.NewReflector(&deploymentLW{factory.OsClient}, &deployapi.Deployment{}, queue).Run()
+  cache.NewReflector(&deploymentLW{factory.Client}, &deployapi.Deployment{}, queue).Run()
 
-  return &controller.DeploymentControllerConfig{
-    OsClient:    factory.OsClient,
-    KubeClient:  factory.KubeClient,
-    Environment: factory.Environment,
+  return &controller.DeploymentController{
+    DeploymentInterface: factory.Client,
+    PodInterface:        factory.KubeClient,
+    Environment:         factory.Environment,
     NextDeployment: func() *deployapi.Deployment {
       return queue.Pop().(*deployapi.Deployment)
     },

@@ -4,10 +4,249 @@ import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-  osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
+
+type testDcDeploymentInterface struct {
+  UpdateDeploymentFunc func(deployment *deployapi.Deployment) (*deployapi.Deployment, error)
+}
+
+func (i *testDcDeploymentInterface) UpdateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+  return i.UpdateDeploymentFunc(deployment)
+}
+
+type testDcPodInterface struct {
+  GetPodFunc    func(id string) (*kapi.Pod, error)
+  CreatePodFunc func(pod *kapi.Pod) (*kapi.Pod, error)
+  DeletePodFunc func(id string) error
+}
+
+func (i *testDcPodInterface) GetPod(ctx kapi.Context, id string) (*kapi.Pod, error) {
+  return i.GetPodFunc(id)
+}
+
+func (i *testDcPodInterface) CreatePod(ctx kapi.Context, pod *kapi.Pod) (*kapi.Pod, error) {
+  return i.CreatePodFunc(pod)
+}
+
+func (i *testDcPodInterface) DeletePod(ctx kapi.Context, id string) error {
+  return i.DeletePodFunc(id)
+}
+
+func TestHandleNewDeployment(t *testing.T) {
+  var updatedDeployment *deployapi.Deployment
+  var newPod *kapi.Pod
+
+  controller := &DeploymentController{
+    DeploymentInterface: &testDcDeploymentInterface{
+      UpdateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        updatedDeployment = deployment
+        return deployment, nil
+      },
+    },
+    PodInterface: &testDcPodInterface{
+      CreatePodFunc: func(pod *kapi.Pod) (*kapi.Pod, error) {
+        newPod = pod
+        return pod, nil
+      },
+    },
+    NextDeployment: func() *deployapi.Deployment {
+      deployment := basicDeployment()
+      deployment.State = deployapi.DeploymentStateNew
+      return deployment
+    },
+  }
+
+  // Verify new -> pending
+  controller.HandleDeployment()
+
+  if newPod == nil {
+    t.Fatal("expected a new pod to be created")
+  }
+
+  if updatedDeployment == nil {
+    t.Fatal("expected an updated deployment")
+  }
+
+  if e, a := deployapi.DeploymentStatePending, updatedDeployment.State; e != a {
+    t.Fatalf("expected new deployment state %s, got %s", e, a)
+  }
+}
+
+func TestHandlePendingDeploymentPendingPod(t *testing.T) {
+  controller := &DeploymentController{
+    DeploymentInterface: &testDcDeploymentInterface{
+      UpdateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        t.Fatalf("unexpected deployment update")
+        return nil, nil
+      },
+    },
+    PodInterface: &testDcPodInterface{
+      GetPodFunc: func(id string) (*kapi.Pod, error) {
+        return &kapi.Pod{
+          CurrentState: kapi.PodState{
+            Status: kapi.PodWaiting,
+          },
+        }, nil
+      },
+    },
+    NextDeployment: func() *deployapi.Deployment {
+      deployment := basicDeployment()
+      deployment.State = deployapi.DeploymentStatePending
+      return deployment
+    },
+  }
+
+  // Verify pending -> pending (no-op) given the pod isn't yet running
+  controller.HandleDeployment()
+}
+
+func TestHandlePendingDeploymentRunningPod(t *testing.T) {
+  var updatedDeployment *deployapi.Deployment
+
+  controller := &DeploymentController{
+    DeploymentInterface: &testDcDeploymentInterface{
+      UpdateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        updatedDeployment = deployment
+        return deployment, nil
+      },
+    },
+    PodInterface: &testDcPodInterface{
+      GetPodFunc: func(id string) (*kapi.Pod, error) {
+        return &kapi.Pod{
+          CurrentState: kapi.PodState{
+            Status: kapi.PodRunning,
+          },
+        }, nil
+      },
+    },
+    NextDeployment: func() *deployapi.Deployment {
+      deployment := basicDeployment()
+      deployment.State = deployapi.DeploymentStatePending
+      return deployment
+    },
+  }
+
+  // Verify pending -> running now that the pod is running
+  controller.HandleDeployment()
+
+  if updatedDeployment == nil {
+    t.Fatalf("expected an updated deployment")
+  }
+
+  if e, a := deployapi.DeploymentStateRunning, updatedDeployment.State; e != a {
+    t.Fatalf("expected updated deployment state %s, got %s", e, a)
+  }
+}
+
+func TestHandleRunningDeploymentRunningPod(t *testing.T) {
+  controller := &DeploymentController{
+    DeploymentInterface: &testDcDeploymentInterface{
+      UpdateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        t.Fatalf("unexpected deployment update")
+        return nil, nil
+      },
+    },
+    PodInterface: &testDcPodInterface{
+      GetPodFunc: func(id string) (*kapi.Pod, error) {
+        return &kapi.Pod{
+          CurrentState: kapi.PodState{
+            Status: kapi.PodRunning,
+          },
+        }, nil
+      },
+    },
+    NextDeployment: func() *deployapi.Deployment {
+      deployment := basicDeployment()
+      deployment.State = deployapi.DeploymentStateRunning
+      return deployment
+    },
+  }
+
+  // Verify no-op
+  controller.HandleDeployment()
+}
+
+func TestHandleRunningDeploymentTerminatedOkPod(t *testing.T) {
+  var updatedDeployment *deployapi.Deployment
+  podDeleted := false
+
+  controller := &DeploymentController{
+    DeploymentInterface: &testDcDeploymentInterface{
+      UpdateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        updatedDeployment = deployment
+        return deployment, nil
+      },
+    },
+    PodInterface: &testDcPodInterface{
+      GetPodFunc: func(id string) (*kapi.Pod, error) {
+        return terminatedPod(0), nil
+      },
+      DeletePodFunc: func(id string) error {
+        podDeleted = true
+        return nil
+      },
+    },
+    NextDeployment: func() *deployapi.Deployment {
+      deployment := basicDeployment()
+      deployment.State = deployapi.DeploymentStateRunning
+      return deployment
+    },
+  }
+
+  // Verify running -> complete since the pod terminated with a 0 exit code
+  controller.HandleDeployment()
+
+  if updatedDeployment == nil {
+    t.Fatalf("expected an updated deployment")
+  }
+
+  if e, a := deployapi.DeploymentStateComplete, updatedDeployment.State; e != a {
+    t.Fatalf("expected updated deployment state %s, got %s", e, a)
+  }
+
+  if !podDeleted {
+    t.Fatalf("expected pod to be deleted")
+  }
+}
+
+func TestHandleRunningDeploymentTerminatedFailedPod(t *testing.T) {
+  var updatedDeployment *deployapi.Deployment
+
+  controller := &DeploymentController{
+    DeploymentInterface: &testDcDeploymentInterface{
+      UpdateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        updatedDeployment = deployment
+        return deployment, nil
+      },
+    },
+    PodInterface: &testDcPodInterface{
+      GetPodFunc: func(id string) (*kapi.Pod, error) {
+        return terminatedPod(1), nil
+      },
+      DeletePodFunc: func(id string) error {
+        t.Fatalf("unexpected delete of pod %s", id)
+        return nil
+      },
+    },
+    NextDeployment: func() *deployapi.Deployment {
+      deployment := basicDeployment()
+      deployment.State = deployapi.DeploymentStateRunning
+      return deployment
+    },
+  }
+
+  // Verify running -> failed since the pod terminated with a nonzero exit code
+  controller.HandleDeployment()
+
+  if updatedDeployment == nil {
+    t.Fatalf("expected an updated deployment")
+  }
+
+  if e, a := deployapi.DeploymentStateFailed, updatedDeployment.State; e != a {
+    t.Fatalf("expected updated deployment state %s, got %s", e, a)
+  }
+}
 
 func basicDeployment() *deployapi.Deployment {
   return &deployapi.Deployment{
@@ -37,182 +276,19 @@ func basicDeployment() *deployapi.Deployment {
   }
 }
 
-type FakeKubeClient struct {
-  kclient.Fake
-  Pod   *kapi.Pod
-  Error error
-}
-
-func (c *FakeKubeClient) GetPod(ctx kapi.Context, name string) (*kapi.Pod, error) {
-  return c.Pod, c.Error
-}
-
-func (c *FakeKubeClient) CreatePod(ctx kapi.Context, pod *kapi.Pod) (*kapi.Pod, error) {
-  c.Actions = append(c.Actions, kclient.FakeAction{Action: "create-pod", Value: pod})
-  return pod, nil
-}
-
-type dcTestHelper struct {
-  OsClient   *osclient.Fake
-  KubeClient *FakeKubeClient
-  Deployment *deployapi.Deployment
-  Controller *DeploymentController
-}
-
-func newDCTestHelper() *dcTestHelper {
-  osClient := &osclient.Fake{}
-  kClient := &FakeKubeClient{}
-
-  deployment := basicDeployment()
-
-  config := &DeploymentControllerConfig{
-    OsClient:    osClient,
-    KubeClient:  kClient,
-    Environment: []kapi.EnvVar{},
-    NextDeployment: func() *deployapi.Deployment {
-      return deployment
-    },
-  }
-
-  return &dcTestHelper{
-    OsClient:   osClient,
-    KubeClient: kClient,
-    Deployment: deployment,
-    Controller: NewDeploymentController(config),
-  }
-}
-
-func TestHandleNewDeployment(t *testing.T) {
-  helper := newDCTestHelper()
-
-  // Verify new -> pending
-  helper.Controller.HandleDeployment()
-
-  // TODO: stronger assertions on the actual pod
-  if e, a := "create-pod", helper.KubeClient.Actions[0].Action; e != a {
-    t.Fatalf("expected %s action, got %s", e, a)
-  }
-
-  if e, a := deployapi.DeploymentStatePending, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
-    t.Fatalf("expected deployment state %s, got %s", e, a)
-  }
-}
-
-func TestHandlePendingDeploymentPendingPod(t *testing.T) {
-  helper := newDCTestHelper()
-
-  // Verify pending -> pending given the pod isn't yet running
-  helper.Deployment.State = deployapi.DeploymentStatePending
-  helper.KubeClient.Pod = &kapi.Pod{
-    CurrentState: kapi.PodState{
-      Status: kapi.PodWaiting,
-    },
-  }
-
-  helper.Controller.HandleDeployment()
-
-  if len(helper.OsClient.Actions) != 0 {
-    t.Fatalf("expected no client actions, found %v", helper.OsClient.Actions)
-  }
-}
-
-func TestHandlePendingDeploymentRunningPod(t *testing.T) {
-  helper := newDCTestHelper()
-
-  // Verify pending -> running now that the pod is running
-  helper.Deployment.State = deployapi.DeploymentStatePending
-  helper.KubeClient.Pod = &kapi.Pod{
-    CurrentState: kapi.PodState{
-      Status: kapi.PodRunning,
-    },
-  }
-
-  helper.Controller.HandleDeployment()
-
-  if e, a := deployapi.DeploymentStateRunning, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
-    t.Fatalf("expected deployment state %s, got %s", e, a)
-  }
-}
-
-func TestHandleRunningDeploymentRunningPod(t *testing.T) {
-  helper := newDCTestHelper()
-
-  // Verify running -> running as the pod is still running
-  helper.Deployment.State = deployapi.DeploymentStateRunning
-  helper.KubeClient.Pod = &kapi.Pod{
-    CurrentState: kapi.PodState{
-      Status: kapi.PodRunning,
-    },
-  }
-
-  helper.Controller.HandleDeployment()
-
-  if len(helper.OsClient.Actions) != 0 {
-    t.Fatalf("expected no client actions, found %v", helper.OsClient.Actions)
-  }
-}
-
-func TestHandleRunningDeploymentTerminatedOkPod(t *testing.T) {
-  helper := newDCTestHelper()
-
-  // Verify running -> complete as the pod terminated successfully
-  helper.Deployment.State = deployapi.DeploymentStateRunning
-  helper.KubeClient.Pod = &kapi.Pod{
+func terminatedPod(exitCode int) *kapi.Pod {
+  return &kapi.Pod{
     CurrentState: kapi.PodState{
       Status: kapi.PodTerminated,
       Info: kapi.PodInfo{
         "container1": kapi.ContainerStatus{
           State: kapi.ContainerState{
             Termination: &kapi.ContainerStateTerminated{
-              ExitCode: 0,
+              ExitCode: exitCode,
             },
           },
         },
       },
     },
-  }
-
-  helper.Controller.HandleDeployment()
-
-  if e, a := deployapi.DeploymentStateComplete, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
-    t.Fatalf("expected deployment state %s, got %s", e, a)
-  }
-
-  // ensure the pod was cleaned up
-  if e, a := "delete-pod", helper.KubeClient.Actions[0].Action; e != a {
-    t.Fatalf("expected %s action, got %s", e, a)
-  }
-}
-
-func TestHandleRunningDeploymentTerminatedFailPod(t *testing.T) {
-  helper := newDCTestHelper()
-
-  // Verify running -> complete as the pod terminated successfully
-  helper.Deployment.State = deployapi.DeploymentStateRunning
-  helper.KubeClient.Pod = &kapi.Pod{
-    CurrentState: kapi.PodState{
-      Status: kapi.PodTerminated,
-      Info: kapi.PodInfo{
-        "container1": kapi.ContainerStatus{
-          State: kapi.ContainerState{
-            Termination: &kapi.ContainerStateTerminated{
-              ExitCode: 1,
-            },
-          },
-        },
-      },
-    },
-  }
-
-  helper.Controller.HandleDeployment()
-
-  if e, a := deployapi.DeploymentStateFailed, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).State; e != a {
-    t.Fatalf("expected deployment state %s, got %s", e, a)
-  }
-
-  for _, a := range helper.OsClient.Actions {
-    if a.Action == "delete-pod" {
-      t.Fatalf("unexpected call to delete-pod")
-    }
   }
 }
