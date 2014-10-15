@@ -3,41 +3,39 @@ package generator
 import (
 	"fmt"
 
+	"github.com/golang/glog"
+
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
-	"github.com/golang/glog"
+
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
-	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
-	deployconfig "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
-	imagerepo "github.com/openshift/origin/pkg/image/registry/imagerepository"
 )
 
-type DeploymentConfigGenerator interface {
-	Generate(deploymentConfigID string) (*deployapi.DeploymentConfig, error)
+type DeploymentConfigGenerator struct {
+	DeploymentInterface       deploymentInterface
+	DeploymentConfigInterface deploymentConfigInterface
+	ImageRepositoryInterface  imageRepositoryInterface
 }
 
-type deploymentConfigGenerator struct {
-	deploymentRegistry   deployregistry.Registry
-	deployConfigRegistry deployconfig.Registry
-	imageRepoRegistry    imagerepo.Registry
+type deploymentInterface interface {
+	GetDeployment(id string) (*deployapi.Deployment, error)
 }
 
-func NewDeploymentConfigGenerator(deploymentRegistry deployregistry.Registry,
-	deployConfigRegistry deployconfig.Registry, imageRepoRegistry imagerepo.Registry) DeploymentConfigGenerator {
-	return &deploymentConfigGenerator{
-		deploymentRegistry:   deploymentRegistry,
-		deployConfigRegistry: deployConfigRegistry,
-		imageRepoRegistry:    imageRepoRegistry,
-	}
+type deploymentConfigInterface interface {
+	GetDeploymentConfig(id string) (*deployapi.DeploymentConfig, error)
 }
 
-func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deployapi.DeploymentConfig, error) {
+type imageRepositoryInterface interface {
+	ListImageRepositories(labels labels.Selector) (*imageapi.ImageRepositoryList, error)
+}
+
+func (g *DeploymentConfigGenerator) Generate(deploymentConfigID string) (*deployapi.DeploymentConfig, error) {
 	glog.Infof("Generating new deployment config from deploymentConfig %v", deploymentConfigID)
 
-	deploymentConfig, err := g.deployConfigRegistry.GetDeploymentConfig(deploymentConfigID)
+	deploymentConfig, err := g.DeploymentConfigInterface.GetDeploymentConfig(deploymentConfigID)
 	if err != nil {
 		glog.Errorf("Error getting deploymentConfig for id %v", deploymentConfigID)
 		return nil, err
@@ -45,7 +43,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 
 	deploymentID := deployutil.LatestDeploymentIDForConfig(deploymentConfig)
 
-	deployment, err := g.deploymentRegistry.GetDeployment(deploymentID)
+	deployment, err := g.DeploymentInterface.GetDeployment(deploymentID)
 	if err != nil && !errors.IsNotFound(err) {
 		glog.Errorf("Error getting deployment: %#v", err)
 		return nil, err
@@ -54,7 +52,7 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	configPodTemplate := deploymentConfig.Template.ControllerTemplate.PodTemplate
 
 	referencedRepoNames := referencedRepoNames(deploymentConfig)
-	referencedRepos := imageReposByDockerImageRepo(g.imageRepoRegistry, referencedRepoNames)
+	referencedRepos := imageReposByDockerImageRepo(g.ImageRepositoryInterface, referencedRepoNames)
 
 	for _, repoName := range referencedRepoNames.List() {
 		params := deployutil.ParamsForImageChangeTrigger(deploymentConfig, repoName)
@@ -97,10 +95,10 @@ func (g *deploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	return deploymentConfig, nil
 }
 
-func imageReposByDockerImageRepo(registry imagerepo.Registry, filter *util.StringSet) map[string]imageapi.ImageRepository {
+func imageReposByDockerImageRepo(imageRepoInterface imageRepositoryInterface, filter *util.StringSet) map[string]imageapi.ImageRepository {
 	repos := make(map[string]imageapi.ImageRepository)
 
-	imageRepos, err := registry.ListImageRepositories(labels.Everything())
+	imageRepos, err := imageRepoInterface.ListImageRepositories(labels.Everything())
 	if err != nil {
 		glog.Errorf("Error listing imageRepositories: %#v", err)
 		return repos

@@ -12,11 +12,11 @@ import (
 )
 
 type REST struct {
-	generator DeploymentConfigGenerator
+	generator *DeploymentConfigGenerator
 	codec     runtime.Codec
 }
 
-func NewREST(generator DeploymentConfigGenerator, codec runtime.Codec) apiserver.RESTStorage {
+func NewREST(generator *DeploymentConfigGenerator, codec runtime.Codec) apiserver.RESTStorage {
 	return &REST{generator: generator, codec: codec}
 }
 

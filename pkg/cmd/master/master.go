@@ -47,7 +47,7 @@ import (
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
 	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
-	deploygen "github.com/openshift/origin/pkg/deploy/generator"
+	deployconfiggenerator "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -236,7 +236,12 @@ func (c *config) runApiserver() {
 	imageEtcd := imageetcd.New(etcdHelper)
 	deployEtcd := deployetcd.New(etcdHelper)
 	routeEtcd := routeetcd.New(etcdHelper)
-	deployConfigGen := deploygen.NewDeploymentConfigGenerator(deployEtcd, deployEtcd, imageEtcd)
+
+	deploymentConfigGenerator := &deployconfiggenerator.DeploymentConfigGenerator{
+		DeploymentInterface:       deployEtcd,
+		DeploymentConfigInterface: deployEtcd,
+		ImageRepositoryInterface:  imageEtcd,
+	}
 
 	// initialize OpenShift API
 	storage := map[string]apiserver.RESTStorage{
@@ -248,7 +253,7 @@ func (c *config) runApiserver() {
 		"imageRepositoryMappings":   imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
 		"deployments":               deployregistry.NewREST(deployEtcd),
 		"deploymentConfigs":         deployconfigregistry.NewREST(deployEtcd),
-		"generateDeploymentConfigs": deploygen.NewREST(deployConfigGen, v1beta1.Codec),
+		"generateDeploymentConfigs": deployconfiggenerator.NewREST(deploymentConfigGenerator, v1beta1.Codec),
 		"templateConfigs":           template.NewStorage(),
 		"routes":                    routeregistry.NewREST(routeEtcd),
 	}

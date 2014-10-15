@@ -24,7 +24,7 @@ import (
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
-	deploygen "github.com/openshift/origin/pkg/deploy/generator"
+	deployconfiggenerator "github.com/openshift/origin/pkg/deploy/generator"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -269,7 +269,11 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 
 	imageEtcd := imageetcd.New(etcdHelper)
 	deployEtcd := deployetcd.New(etcdHelper)
-	deployConfigGenerator := deploygen.NewDeploymentConfigGenerator(deployEtcd, deployEtcd, imageEtcd)
+	deployConfigGenerator := &deployconfiggenerator.DeploymentConfigGenerator{
+		DeploymentInterface:       deployEtcd,
+		DeploymentConfigInterface: deployEtcd,
+		ImageRepositoryInterface:  imageEtcd,
+	}
 
 	storage := map[string]apiserver.RESTStorage{
 		"images":                    image.NewREST(imageEtcd),
@@ -277,7 +281,7 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 		"imageRepositoryMappings":   imagerepositorymapping.NewREST(imageEtcd, imageEtcd),
 		"deployments":               deployregistry.NewREST(deployEtcd),
 		"deploymentConfigs":         deployconfigregistry.NewREST(deployEtcd),
-		"generateDeploymentConfigs": deploygen.NewREST(deployConfigGenerator, v1beta1.Codec),
+		"generateDeploymentConfigs": deployconfiggenerator.NewREST(deployConfigGenerator, v1beta1.Codec),
 	}
 
 	apiserver.NewAPIGroup(kmaster.API_v1beta1()).InstallREST(osMux, "/api/v1beta1")
