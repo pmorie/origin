@@ -34,16 +34,16 @@ func (factory *DeploymentControllerConfigFactory) Create() *controller.Deploymen
   }
 }
 
-type DeploymentConfigControllerConfigFactory struct {
-  Client osclient.Interface
+type DeploymentConfigControllerFactory struct {
+  Client *osclient.Client
 }
 
-func (factory *DeploymentConfigControllerConfigFactory) Create() *controller.DeploymentConfigControllerConfig {
+func (factory *DeploymentConfigControllerFactory) Create() *controller.DeploymentConfigController {
   queue := cache.NewFIFO()
   cache.NewReflector(&deploymentConfigLW{factory.Client}, &deployapi.DeploymentConfig{}, queue).Run()
 
-  return &controller.DeploymentConfigControllerConfig{
-    Client: factory.Client,
+  return &controller.DeploymentConfigController{
+    DeploymentInterface: factory.Client,
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return queue.Pop().(*deployapi.DeploymentConfig)
     },
