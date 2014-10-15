@@ -475,9 +475,8 @@ func (c *config) runDeploymentController() {
 }
 
 func (c *config) runDeploymentConfigController() {
-	configFactory := deploycontrollerfactory.DeploymentConfigControllerConfigFactory{c.getOsClient()}
-	controllerConfig := configFactory.Create()
-	controller := deploycontroller.NewDeploymentConfigController(controllerConfig)
+	factory := deploycontrollerfactory.DeploymentConfigControllerFactory{c.getOsClient()}
+	controller := factory.Create()
 	controller.Run()
 }
 

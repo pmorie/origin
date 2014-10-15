@@ -450,9 +450,8 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 		t.Errorf("Expected %#v, got %#v", e, a)
 	}
 
-	deployConfigFactory := deploycontrollerfactory.DeploymentConfigControllerConfigFactory{osClient}
-	deployConfigControllerConfig := deployConfigFactory.Create()
-	openshift.DeploymentConfigController = deploycontroller.NewDeploymentConfigController(deployConfigControllerConfig)
+	deployConfigFactory := deploycontrollerfactory.DeploymentConfigControllerFactory{osClient}
+	openshift.DeploymentConfigController = deployConfigFactory.Create()
 
 	configTriggerFactory := deploycontrollerfactory.ConfigChangeTriggerControllerConfigFactory{osClient}
 	configTriggerControllerConfig := configTriggerFactory.Create()

@@ -5,28 +5,21 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/golang/glog"
-	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
 // A DeploymentConfigController is responsible for implementing the triggers registered by DeploymentConfigs
 type DeploymentConfigController struct {
-	config *DeploymentConfigControllerConfig
-}
-
-// Holds the configuration of a DeploymentConfigController
-type DeploymentConfigControllerConfig struct {
-	// OpenShift Client
-	Client osclient.Interface
+	DeploymentInterface deploymentInterface
 
 	// Blocks until the next DeploymentConfig is available
 	NextDeploymentConfig func() *deployapi.DeploymentConfig
 }
 
-// New creates a new DeploymentConfigController.
-func NewDeploymentConfigController(config *DeploymentConfigControllerConfig) *DeploymentConfigController {
-	return &DeploymentConfigController{config}
+type deploymentInterface interface {
+	GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error)
+	CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error)
 }
 
 // Process deployment config events one at a time
@@ -35,7 +28,7 @@ func (c *DeploymentConfigController) Run() {
 }
 
 func (c *DeploymentConfigController) HandleDeploymentConfig() {
-	config := c.config.NextDeploymentConfig()
+	config := c.NextDeploymentConfig()
 	ctx := kapi.WithNamespace(kapi.NewContext(), config.Namespace)
 	deploy, err := c.shouldDeploy(ctx, config)
 	if err != nil {
@@ -78,7 +71,7 @@ func (c *DeploymentConfigController) shouldDeploy(ctx kapi.Context, config *depl
 // TODO: reduce code duplication between trigger and config controllers
 func (c *DeploymentConfigController) latestDeploymentForConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.Deployment, error) {
 	latestDeploymentId := deployutil.LatestDeploymentIDForConfig(config)
-	deployment, err := c.config.Client.GetDeployment(ctx, latestDeploymentId)
+	deployment, err := c.DeploymentInterface.GetDeployment(ctx, latestDeploymentId)
 	if err != nil {
 		// TODO: probably some error / race handling to do here
 		return nil, err
@@ -104,7 +97,7 @@ func (c *DeploymentConfigController) deploy(ctx kapi.Context, config *deployapi.
 	}
 
 	glog.Infof("Creating new deployment from config %s", config.ID)
-	_, err := c.config.Client.CreateDeployment(ctx, deployment)
+	_, err := c.DeploymentInterface.CreateDeployment(ctx, deployment)
 
 	return err
 }

@@ -5,9 +5,129 @@ import (
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
   kerrors "github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
-  osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
+
+type testDeploymentInterface struct {
+  GetDeploymentFunc    func(id string) (*deployapi.Deployment, error)
+  CreateDeploymentFunc func(deployment *deployapi.Deployment) (*deployapi.Deployment, error)
+}
+
+func (i *testDeploymentInterface) GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error) {
+  return i.GetDeploymentFunc(id)
+}
+
+func (i *testDeploymentInterface) CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+  return i.CreateDeploymentFunc(deployment)
+}
+
+func TestHandleNewDeploymentConfig(t *testing.T) {
+  controller := &DeploymentConfigController{
+    DeploymentInterface: &testDeploymentInterface{
+      GetDeploymentFunc: func(id string) (*deployapi.Deployment, error) {
+        t.Fatalf("unexpected call with id %s", id)
+        return nil, nil
+      },
+      CreateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        t.Fatalf("unexpected call with deployment %v", deployment)
+        return nil, nil
+      },
+    },
+    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
+      deploymentConfig := manualDeploymentConfig()
+      deploymentConfig.LatestVersion = 0
+      return deploymentConfig
+    },
+  }
+
+  controller.HandleDeploymentConfig()
+}
+
+func TestHandleInitialDeployment(t *testing.T) {
+  deploymentConfig := manualDeploymentConfig()
+  deploymentConfig.LatestVersion = 1
+
+  var deployed *deployapi.Deployment
+
+  controller := &DeploymentConfigController{
+    DeploymentInterface: &testDeploymentInterface{
+      GetDeploymentFunc: func(id string) (*deployapi.Deployment, error) {
+        return nil, kerrors.NewNotFound("deployment", id)
+      },
+      CreateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        deployed = deployment
+        return deployment, nil
+      },
+    },
+    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
+      return deploymentConfig
+    },
+  }
+
+  controller.HandleDeploymentConfig()
+
+  if deployed == nil {
+    t.Fatalf("expected a deployment")
+  }
+
+  if e, a := deploymentConfig.ID, deployed.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+    t.Fatalf("expected deployment with label %s, got %s", e, a)
+  }
+}
+
+func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
+  controller := &DeploymentConfigController{
+    DeploymentInterface: &testDeploymentInterface{
+      GetDeploymentFunc: func(id string) (*deployapi.Deployment, error) {
+        return matchingDeployment(), nil
+      },
+      CreateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        t.Fatalf("unexpected call to to create deployment: %v", deployment)
+        return nil, nil
+      },
+    },
+    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
+      deploymentConfig := manualDeploymentConfig()
+      deploymentConfig.LatestVersion = 0
+      return deploymentConfig
+    },
+  }
+
+  controller.HandleDeploymentConfig()
+}
+
+func TestHandleConfigChangeWithPodTemplateDiff(t *testing.T) {
+  deploymentConfig := manualDeploymentConfig()
+  deploymentConfig.LatestVersion = 1
+  deploymentConfig.Template.ControllerTemplate.PodTemplate.Labels["foo"] = "bar"
+
+  var deployed *deployapi.Deployment
+
+  controller := &DeploymentConfigController{
+    DeploymentInterface: &testDeploymentInterface{
+      GetDeploymentFunc: func(id string) (*deployapi.Deployment, error) {
+        return matchingDeployment(), nil
+      },
+      CreateDeploymentFunc: func(deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+        deployed = deployment
+        return deployment, nil
+      },
+    },
+    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
+      return deploymentConfig
+    },
+  }
+
+  controller.HandleDeploymentConfig()
+
+  if deployed == nil {
+    t.Fatalf("expected a deployment")
+  }
+
+  if e, a := deploymentConfig.ID, deployed.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+    t.Fatalf("expected deployment with label %s, got %s", e, a)
+  }
+}
 
 func manualDeploymentConfig() *deployapi.DeploymentConfig {
   return &deployapi.DeploymentConfig{
@@ -83,102 +203,5 @@ func matchingDeployment() *deployapi.Deployment {
         },
       },
     },
-  }
-}
-
-type dccFakeOsClient struct {
-  osclient.Fake
-  Deployment *deployapi.Deployment
-  Error      error
-}
-
-func (c *dccFakeOsClient) GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error) {
-  return c.Deployment, c.Error
-}
-
-func (c *dccFakeOsClient) CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
-  c.Actions = append(c.Actions, osclient.FakeAction{Action: "create-deployment", Value: deployment})
-  return deployment, c.Error
-}
-
-type dccTestHelper struct {
-  OsClient         *dccFakeOsClient
-  DeploymentConfig *deployapi.DeploymentConfig
-  Controller       *DeploymentConfigController
-}
-
-func newDCCTestHelper() *dccTestHelper {
-  osClient := &dccFakeOsClient{}
-
-  deploymentConfig := manualDeploymentConfig()
-
-  config := &DeploymentConfigControllerConfig{
-    Client: osClient,
-    NextDeploymentConfig: func() *deployapi.DeploymentConfig {
-      return deploymentConfig
-    },
-  }
-
-  return &dccTestHelper{
-    OsClient:         osClient,
-    DeploymentConfig: deploymentConfig,
-    Controller:       NewDeploymentConfigController(config),
-  }
-}
-
-func TestHandleNewDeploymentConfig(t *testing.T) {
-  helper := newDCCTestHelper()
-
-  helper.DeploymentConfig.LatestVersion = 0
-
-  helper.Controller.HandleDeploymentConfig()
-
-  if len(helper.OsClient.Actions) != 0 {
-    t.Fatalf("expected no client activity, found: %s", helper.OsClient.Actions)
-  }
-}
-
-func TestHandleInitialDeployment(t *testing.T) {
-  helper := newDCCTestHelper()
-
-  helper.DeploymentConfig.LatestVersion = 1
-  helper.OsClient.Error = kerrors.NewNotFound("deployment", "id")
-
-  helper.Controller.HandleDeploymentConfig()
-
-  if e, a := helper.DeploymentConfig.ID, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).Labels[deployapi.DeploymentConfigIDLabel]; e != a {
-    t.Fatalf("expected deployment with label %s, got %s", e, a)
-  }
-}
-
-func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
-  helper := newDCCTestHelper()
-
-  helper.DeploymentConfig.LatestVersion = 1
-  helper.OsClient.Deployment = matchingDeployment()
-
-  // verify that no new deployment was made due to a lack
-  // of differences in the pod templates
-  helper.Controller.HandleDeploymentConfig()
-
-  for _, a := range helper.OsClient.Actions {
-    if a.Action == "create-deployment" {
-      t.Fatalf("unexpected call to create-deployment")
-    }
-  }
-}
-
-func TestHandleConfigChangeWithPodTemplateDiff(t *testing.T) {
-  helper := newDCCTestHelper()
-
-  helper.DeploymentConfig.LatestVersion = 1
-  helper.OsClient.Deployment = matchingDeployment()
-  helper.DeploymentConfig.Template.ControllerTemplate.PodTemplate.Labels["foo"] = "bar"
-
-  // verify that a new deployment results from the change in config
-  helper.Controller.HandleDeploymentConfig()
-
-  if e, a := helper.DeploymentConfig.ID, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).Labels[deployapi.DeploymentConfigIDLabel]; e != a {
-    t.Fatalf("expected deployment with label %s, got %s", e, a)
   }
 }
