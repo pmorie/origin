@@ -4,9 +4,9 @@ import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
   osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
+  deploytest "github.com/openshift/origin/pkg/deploy/controller/test"
   imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
@@ -28,7 +28,7 @@ func newIcTestHelper() *icTestHelper {
       NextImageRepository: func() *imageapi.ImageRepository {
         return helper.ImageRepo
       },
-      DeploymentConfigStore: newFakeDeploymentConfigStore(),
+      DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(imageChangeDeploymentConfig()),
     }
   )
   helper.Controller = NewImageChangeTriggerController(config)
@@ -209,25 +209,3 @@ func (c *icFakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deploy
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "update-deployment-config", Value: config})
   return config, c.Error
 }
-
-type fakeDeploymentConfigStore struct {
-  DeploymentConfig *deployapi.DeploymentConfig
-}
-
-func newFakeDeploymentConfigStore() fakeDeploymentConfigStore {
-  return fakeDeploymentConfigStore{imageChangeDeploymentConfig()}
-}
-
-func (s fakeDeploymentConfigStore) Add(id string, obj interface{})    {}
-func (s fakeDeploymentConfigStore) Update(id string, obj interface{}) {}
-func (s fakeDeploymentConfigStore) Delete(id string)                  {}
-func (s fakeDeploymentConfigStore) List() []interface{} {
-  return []interface{}{s.DeploymentConfig}
-}
-func (s fakeDeploymentConfigStore) Contains() util.StringSet {
-  return util.NewStringSet()
-}
-func (s fakeDeploymentConfigStore) Get(id string) (item interface{}, exists bool) {
-  return nil, false
-}
-func (s fakeDeploymentConfigStore) Replace(idToObj map[string]interface{}) {}

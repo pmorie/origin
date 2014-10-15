@@ -4,9 +4,9 @@ import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
   osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
+  deploytest "github.com/openshift/origin/pkg/deploy/controller/test"
 )
 
 type cctcTestHelper struct {
@@ -26,7 +26,7 @@ func newCctcTestHelper() *cctcTestHelper {
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return helper.DeploymentConfig
     },
-    DeploymentStore: newFakeStore(),
+    DeploymentStore: deploytest.NewFakeDeploymentStore(matchingInitialDeployment()),
   }
   helper.Controller = NewConfigChangeTriggerController(config)
 
@@ -250,29 +250,3 @@ func (c *FakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deployap
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "update-deployment-config", Value: config})
   return config, c.Error
 }
-
-type fakeStore struct {
-  Deployment *deployapi.Deployment
-}
-
-func newFakeStore() fakeStore {
-  return fakeStore{matchingInitialDeployment()}
-}
-
-func (s fakeStore) Add(id string, obj interface{})    {}
-func (s fakeStore) Update(id string, obj interface{}) {}
-func (s fakeStore) Delete(id string)                  {}
-func (s fakeStore) List() []interface{} {
-  return []interface{}{s.Deployment}
-}
-func (s fakeStore) Contains() util.StringSet {
-  return util.NewStringSet()
-}
-func (s fakeStore) Get(id string) (item interface{}, exists bool) {
-  if s.Deployment == nil {
-    return nil, false
-  }
-
-  return s.Deployment, true
-}
-func (s fakeStore) Replace(idToObj map[string]interface{}) {}
