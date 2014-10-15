@@ -4,66 +4,83 @@ import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
   deploytest "github.com/openshift/origin/pkg/deploy/controller/test"
   imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-type icTestHelper struct {
-  Client     *icFakeOsClient
-  ImageRepo  *imageapi.ImageRepository
-  Controller *ImageChangeTriggerController
+type testIcDeploymentConfigInterface struct {
+  UpdateDeploymentConfigFunc   func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
+  GenerateDeploymentConfigFunc func(id string) (*deployapi.DeploymentConfig, error)
 }
 
-func newIcTestHelper() *icTestHelper {
-  var (
-    client = &icFakeOsClient{}
-    helper = &icTestHelper{
-      Client:    client,
-      ImageRepo: originalImageRepo(),
-    }
-    config = &ImageChangeControllerConfig{
-      Client: client,
-      NextImageRepository: func() *imageapi.ImageRepository {
-        return helper.ImageRepo
-      },
-      DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(imageChangeDeploymentConfig()),
-    }
-  )
-  helper.Controller = NewImageChangeTriggerController(config)
-  helper.Client.GenerationResult = regeneratedConfig()
-
-  return helper
+func (i *testIcDeploymentConfigInterface) UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+  return i.UpdateDeploymentConfigFunc(config)
+}
+func (i *testIcDeploymentConfigInterface) GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error) {
+  return i.GenerateDeploymentConfigFunc(id)
 }
 
 func TestImageChangeForUnregisteredTag(t *testing.T) {
-  helper := newIcTestHelper()
-  helper.Controller.OneImageRepo()
-  helper.ImageRepo = unregisteredTagUpdate()
-  helper.Controller.OneImageRepo()
+  configWithManualTrigger := imageChangeDeploymentConfig()
+  configWithManualTrigger.Triggers[0].ImageChangeParams.Automatic = false
 
-  if len(helper.Client.Actions) != 0 {
-    t.Fatalf("expected no client activity, found: %s", helper.Client.Actions)
+  controller := &ImageChangeController{
+    DeploymentConfigInterface: &testIcDeploymentConfigInterface{
+      UpdateDeploymentConfigFunc: func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+        t.Fatalf("unexpected deployment config update")
+        return nil, nil
+      },
+      GenerateDeploymentConfigFunc: func(id string) (*deployapi.DeploymentConfig, error) {
+        t.Fatalf("unexpected generator call")
+        return nil, nil
+      },
+    },
+    NextImageRepository: func() *imageapi.ImageRepository {
+      return tagUpdate()
+    },
+    DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(configWithManualTrigger),
   }
+
+  // verify no-op
+  controller.OneImageRepo()
 }
 
 func TestImageChange(t *testing.T) {
-  helper := newIcTestHelper()
-  helper.Controller.OneImageRepo()
-  helper.ImageRepo = tagUpdate()
-  helper.Controller.OneImageRepo()
+  var (
+    generatedConfig *deployapi.DeploymentConfig
+    updatedConfig   *deployapi.DeploymentConfig
+  )
 
-  if num := len(helper.Client.Actions); num != 2 {
-    t.Errorf("Expected 2 actions, got: %v", num)
+  controller := &ImageChangeController{
+    DeploymentConfigInterface: &testIcDeploymentConfigInterface{
+      UpdateDeploymentConfigFunc: func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+        updatedConfig = config
+        return updatedConfig, nil
+      },
+      GenerateDeploymentConfigFunc: func(id string) (*deployapi.DeploymentConfig, error) {
+        generatedConfig = regeneratedConfig()
+        return generatedConfig, nil
+      },
+    },
+    NextImageRepository: func() *imageapi.ImageRepository {
+      return tagUpdate()
+    },
+    DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(imageChangeDeploymentConfig()),
   }
 
-  if e, a := "generate-deployment-config", helper.Client.Actions[0].Action; e != a {
-    t.Fatalf("expected %s action, got %s", e, a)
+  controller.OneImageRepo()
+
+  if generatedConfig == nil {
+    t.Fatalf("expected config generation to occur")
   }
 
-  if e, a := "update-deployment-config", helper.Client.Actions[1].Action; e != a {
-    t.Fatalf("expected %s action, got %s", e, a)
+  if updatedConfig == nil {
+    t.Fatalf("expected an updated deployment config")
+  }
+
+  if e, a := updatedConfig.ID, generatedConfig.ID; e != a {
+    t.Fatalf("expected updated config with id %s, got %s", e, a)
   }
 }
 
@@ -192,20 +209,4 @@ func regeneratedConfig() *deployapi.DeploymentConfig {
       },
     },
   }
-}
-
-type icFakeOsClient struct {
-  osclient.Fake
-  GenerationResult *deployapi.DeploymentConfig
-  Error            error
-}
-
-func (c *icFakeOsClient) GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error) {
-  c.Actions = append(c.Actions, osclient.FakeAction{Action: "generate-deployment-config", Value: id})
-  return c.GenerationResult, c.Error
-}
-
-func (c *icFakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
-  c.Actions = append(c.Actions, osclient.FakeAction{Action: "update-deployment-config", Value: config})
-  return config, c.Error
 }

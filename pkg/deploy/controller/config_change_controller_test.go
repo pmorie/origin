@@ -98,7 +98,6 @@ func TestChangeWithoutTemplateDiff(t *testing.T) {
   }
 
   controller.HandleDeploymentConfig()
-  controller.HandleDeploymentConfig()
 
   if generated {
     t.Error("Unexpected generation of deploymentConfig")

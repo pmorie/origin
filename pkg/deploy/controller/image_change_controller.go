@@ -4,43 +4,38 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/golang/glog"
+
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client/cache"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
-	"github.com/golang/glog"
-	osclient "github.com/openshift/origin/pkg/client"
+
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-type ImageChangeControllerConfig struct {
-	Client osclient.Interface
+type ImageChangeController struct {
+	DeploymentConfigInterface icDeploymentConfigInterface
 
 	NextImageRepository func() *imageapi.ImageRepository
 
 	DeploymentConfigStore cache.Store
 }
 
-type ImageChangeTriggerController struct {
-	config *ImageChangeControllerConfig
+type icDeploymentConfigInterface interface {
+	UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
+	GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error)
 }
 
-// NewDeploymentTriggerController creates a new DeploymentTriggerController.
-func NewImageChangeTriggerController(config *ImageChangeControllerConfig) *ImageChangeTriggerController {
-	return &ImageChangeTriggerController{
-		config: config,
-	}
-}
-
-func (c *ImageChangeTriggerController) Run() {
+func (c *ImageChangeController) Run() {
 	go util.Forever(c.OneImageRepo, 0)
 }
 
-func (c *ImageChangeTriggerController) OneImageRepo() {
-	imageRepo := c.config.NextImageRepository()
+func (c *ImageChangeController) OneImageRepo() {
+	imageRepo := c.NextImageRepository()
 	configIDs := []string{}
 
-	for _, c := range c.config.DeploymentConfigStore.List() {
+	for _, c := range c.DeploymentConfigStore.List() {
 		config := c.(*deployapi.DeploymentConfig)
 		for _, params := range configImageTriggers(config) {
 			for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
@@ -64,8 +59,8 @@ func (c *ImageChangeTriggerController) OneImageRepo() {
 	}
 }
 
-func (c *ImageChangeTriggerController) regenerate(ctx kapi.Context, configID string) error {
-	newConfig, err := c.config.Client.GenerateDeploymentConfig(ctx, configID)
+func (c *ImageChangeController) regenerate(ctx kapi.Context, configID string) error {
+	newConfig, err := c.DeploymentConfigInterface.GenerateDeploymentConfig(ctx, configID)
 	if err != nil {
 		glog.Errorf("Error generating new version of deploymentConfig %v", configID)
 		return err
@@ -77,7 +72,7 @@ func (c *ImageChangeTriggerController) regenerate(ctx kapi.Context, configID str
 	}
 
 	ctx = kapi.WithNamespace(ctx, newConfig.Namespace)
-	_, err = c.config.Client.UpdateDeploymentConfig(ctx, newConfig)
+	_, err = c.DeploymentConfigInterface.UpdateDeploymentConfig(ctx, newConfig)
 	if err != nil {
 		glog.Errorf("Error updating deploymentConfig %v", configID)
 		return err

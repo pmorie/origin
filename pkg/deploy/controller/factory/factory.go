@@ -70,20 +70,20 @@ func (factory *ConfigChangeControllerFactory) Create() *controller.ConfigChangeC
   }
 }
 
-type ImageChangeControllerConfigFactory struct {
-  Client osclient.Interface
+type ImageChangeControllerFactory struct {
+  Client *osclient.Client
 }
 
-func (factory *ImageChangeControllerConfigFactory) Create() *controller.ImageChangeControllerConfig {
+func (factory *ImageChangeControllerFactory) Create() *controller.ImageChangeController {
   queue := cache.NewFIFO()
   cache.NewReflector(&imageRepositoryLW{factory.Client}, &imageapi.ImageRepository{}, queue).Run()
 
   store := cache.NewStore()
   cache.NewReflector(&deploymentConfigLW{factory.Client}, &deployapi.DeploymentConfig{}, store).Run()
 
-  return &controller.ImageChangeControllerConfig{
-    Client:                factory.Client,
-    DeploymentConfigStore: store,
+  return &controller.ImageChangeController{
+    DeploymentConfigInterface: factory.Client,
+    DeploymentConfigStore:     store,
     NextImageRepository: func() *imageapi.ImageRepository {
       return queue.Pop().(*imageapi.ImageRepository)
     },
