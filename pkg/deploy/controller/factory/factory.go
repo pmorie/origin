@@ -50,19 +50,19 @@ func (factory *DeploymentConfigControllerFactory) Create() *controller.Deploymen
   }
 }
 
-type ConfigChangeTriggerControllerConfigFactory struct {
-  OsClient osclient.Interface
+type ConfigChangeControllerFactory struct {
+  Client osclient.Interface
 }
 
-func (factory *ConfigChangeTriggerControllerConfigFactory) Create() *controller.ConfigChangeTriggerControllerConfig {
+func (factory *ConfigChangeControllerFactory) Create() *controller.ConfigChangeController {
   queue := cache.NewFIFO()
-  cache.NewReflector(&deploymentConfigLW{factory.OsClient}, &deployapi.DeploymentConfig{}, queue).Run()
+  cache.NewReflector(&deploymentConfigLW{factory.Client}, &deployapi.DeploymentConfig{}, queue).Run()
 
   store := cache.NewStore()
-  cache.NewReflector(&deploymentLW{factory.OsClient}, &deployapi.Deployment{}, store).Run()
+  cache.NewReflector(&deploymentLW{factory.Client}, &deployapi.Deployment{}, store).Run()
 
-  return &controller.ConfigChangeTriggerControllerConfig{
-    OsClient: factory.OsClient,
+  return &controller.ConfigChangeController{
+    DeploymentConfigInterface: factory.Client,
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return queue.Pop().(*deployapi.DeploymentConfig)
     },

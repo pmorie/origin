@@ -355,7 +355,7 @@ func TestSimpleConfigChangeTrigger(t *testing.T) {
 		t.Fatalf("Couldn't create updated DeploymentConfig: %v", err)
 	}
 
-	openshift.ConfigChangeTriggerController.HandleDeploymentConfig()
+	openshift.ConfigChangeController.HandleDeploymentConfig()
 	openshift.DeploymentConfigController.HandleDeploymentConfig()
 
 	event = <-watch.ResultChan()
@@ -386,11 +386,11 @@ func (p *podInfoGetter) GetPodInfo(host, podID string) (kapi.PodInfo, error) {
 }
 
 type testOpenshift struct {
-	Client                        *osclient.Client
-	server                        *httptest.Server
-	DeploymentConfigController    *deploycontroller.DeploymentConfigController
-	ConfigChangeTriggerController *deploycontroller.ConfigChangeTriggerController
-	ImageChangeTriggerController  *deploycontroller.ImageChangeTriggerController
+	Client                       *osclient.Client
+	server                       *httptest.Server
+	DeploymentConfigController   *deploycontroller.DeploymentConfigController
+	ConfigChangeController       *deploycontroller.ConfigChangeController
+	ImageChangeTriggerController *deploycontroller.ImageChangeTriggerController
 }
 
 func (o *testOpenshift) Shutdown() {
@@ -453,9 +453,8 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 	deployConfigFactory := deploycontrollerfactory.DeploymentConfigControllerFactory{osClient}
 	openshift.DeploymentConfigController = deployConfigFactory.Create()
 
-	configTriggerFactory := deploycontrollerfactory.ConfigChangeTriggerControllerConfigFactory{osClient}
-	configTriggerControllerConfig := configTriggerFactory.Create()
-	openshift.ConfigChangeTriggerController = deploycontroller.NewConfigChangeTriggerController(configTriggerControllerConfig)
+	configTriggerFactory := deploycontrollerfactory.ConfigChangeControllerFactory{osClient}
+	openshift.ConfigChangeController = configTriggerFactory.Create()
 
 	imageTriggerFactory := deploycontrollerfactory.ImageChangeControllerConfigFactory{osClient}
 	imageTriggerControllerConfig := imageTriggerFactory.Create()
