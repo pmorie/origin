@@ -23,13 +23,9 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
-	deployconfigtrigger "github.com/openshift/origin/pkg/deploy/configchangetrigger"
-	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
-	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
-	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
+	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
-	deployimagetrigger "github.com/openshift/origin/pkg/deploy/imagechangetrigger"
-	deployimagetriggerfactory "github.com/openshift/origin/pkg/deploy/imagechangetrigger/factory"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -392,9 +388,9 @@ func (p *podInfoGetter) GetPodInfo(host, podID string) (kapi.PodInfo, error) {
 type testOpenshift struct {
 	Client                        *osclient.Client
 	server                        *httptest.Server
-	DeploymentConfigController    *deployconfigcontroller.DeploymentConfigController
-	ConfigChangeTriggerController *deployconfigtrigger.ConfigChangeTriggerController
-	ImageChangeTriggerController  *deployimagetrigger.ImageChangeTriggerController
+	DeploymentConfigController    *deploycontroller.DeploymentConfigController
+	ConfigChangeTriggerController *deploycontroller.ConfigChangeTriggerController
+	ImageChangeTriggerController  *deploycontroller.ImageChangeTriggerController
 }
 
 func (o *testOpenshift) Shutdown() {
@@ -454,17 +450,17 @@ func NewTestOpenshift(t *testing.T) *testOpenshift {
 		t.Errorf("Expected %#v, got %#v", e, a)
 	}
 
-	deployConfigFactory := deployconfigcontrollerfactory.ConfigFactory{osClient}
+	deployConfigFactory := deploycontrollerfactory.DeploymentConfigControllerConfigFactory{osClient}
 	deployConfigControllerConfig := deployConfigFactory.Create()
-	openshift.DeploymentConfigController = deployconfigcontroller.New(deployConfigControllerConfig)
+	openshift.DeploymentConfigController = deploycontroller.NewDeploymentConfigController(deployConfigControllerConfig)
 
-	configTriggerFactory := deployconfigtriggerfactory.ConfigFactory{osClient}
+	configTriggerFactory := deploycontrollerfactory.ConfigChangeTriggerControllerConfigFactory{osClient}
 	configTriggerControllerConfig := configTriggerFactory.Create()
-	openshift.ConfigChangeTriggerController = deployconfigtrigger.New(configTriggerControllerConfig)
+	openshift.ConfigChangeTriggerController = deploycontroller.NewConfigChangeTriggerController(configTriggerControllerConfig)
 
-	imageTriggerFactory := deployimagetriggerfactory.ConfigFactory{osClient}
+	imageTriggerFactory := deploycontrollerfactory.ImageChangeControllerConfigFactory{osClient}
 	imageTriggerControllerConfig := imageTriggerFactory.Create()
-	openshift.ImageChangeTriggerController = deployimagetrigger.New(imageTriggerControllerConfig)
+	openshift.ImageChangeTriggerController = deploycontroller.NewImageChangeTriggerController(imageTriggerControllerConfig)
 
 	return openshift
 }

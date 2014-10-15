@@ -46,15 +46,9 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
-	deployconfigtrigger "github.com/openshift/origin/pkg/deploy/configchangetrigger"
-	deployconfigtriggerfactory "github.com/openshift/origin/pkg/deploy/configchangetrigger/factory"
-	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/configcontroller"
-	deployconfigcontrollerfactory "github.com/openshift/origin/pkg/deploy/configcontroller/factory"
-	deploycontroller "github.com/openshift/origin/pkg/deploy/deploycontroller"
-	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/deploycontroller/factory"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
+	deploycontrollerfactory "github.com/openshift/origin/pkg/deploy/controller/factory"
 	deploygen "github.com/openshift/origin/pkg/deploy/generator"
-	deployimagechangetrigger "github.com/openshift/origin/pkg/deploy/imagechangetrigger"
-	deployimagechangetriggerfactory "github.com/openshift/origin/pkg/deploy/imagechangetrigger/factory"
 	deployregistry "github.com/openshift/origin/pkg/deploy/registry/deploy"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployetcd "github.com/openshift/origin/pkg/deploy/registry/etcd"
@@ -468,7 +462,7 @@ func (c *config) runDeploymentController() {
 	kubeClient := c.getKubeClient()
 	osClient := c.getOsClient()
 
-	configFactory := deploycontrollerfactory.ConfigFactory{
+	configFactory := deploycontrollerfactory.DeploymentControllerConfigFactory{
 		OsClient:    osClient,
 		KubeClient:  kubeClient,
 		Environment: env,
@@ -476,28 +470,28 @@ func (c *config) runDeploymentController() {
 
 	controllerConfig := configFactory.Create()
 
-	controller := deploycontroller.New(controllerConfig)
+	controller := deploycontroller.NewDeploymentController(controllerConfig)
 	controller.Run()
 }
 
 func (c *config) runDeploymentConfigController() {
-	configFactory := deployconfigcontrollerfactory.ConfigFactory{c.getOsClient()}
+	configFactory := deploycontrollerfactory.DeploymentConfigControllerConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
-	controller := deployconfigcontroller.New(controllerConfig)
+	controller := deploycontroller.NewDeploymentConfigController(controllerConfig)
 	controller.Run()
 }
 
 func (c *config) runConfigChangeTriggerController() {
-	configFactory := deployconfigtriggerfactory.ConfigFactory{c.getOsClient()}
+	configFactory := deploycontrollerfactory.ConfigChangeTriggerControllerConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
-	controller := deployconfigtrigger.New(controllerConfig)
+	controller := deploycontroller.NewConfigChangeTriggerController(controllerConfig)
 	controller.Run()
 }
 
 func (c *config) runDeploymentImageChangeTriggerController() {
-	configFactory := deployimagechangetriggerfactory.ConfigFactory{c.getOsClient()}
+	configFactory := deploycontrollerfactory.ImageChangeControllerConfigFactory{c.getOsClient()}
 	controllerConfig := configFactory.Create()
-	controller := deployimagechangetrigger.New(controllerConfig)
+	controller := deploycontroller.NewImageChangeTriggerController(controllerConfig)
 	controller.Run()
 }
 

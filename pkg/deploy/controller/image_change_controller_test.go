@@ -1,44 +1,44 @@
-package imagechangetrigger
+package controller
 
 import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
   osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
+  deploytest "github.com/openshift/origin/pkg/deploy/controller/test"
   imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-type TestHelper struct {
-  Client     *FakeOsClient
+type icTestHelper struct {
+  Client     *icFakeOsClient
   ImageRepo  *imageapi.ImageRepository
   Controller *ImageChangeTriggerController
 }
 
-func NewTestHelper() *TestHelper {
+func newIcTestHelper() *icTestHelper {
   var (
-    client = &FakeOsClient{}
-    helper = &TestHelper{
+    client = &icFakeOsClient{}
+    helper = &icTestHelper{
       Client:    client,
       ImageRepo: originalImageRepo(),
     }
-    config = &Config{
+    config = &ImageChangeControllerConfig{
       Client: client,
       NextImageRepository: func() *imageapi.ImageRepository {
         return helper.ImageRepo
       },
-      DeploymentConfigStore: newFakeStore(),
+      DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(imageChangeDeploymentConfig()),
     }
   )
-  helper.Controller = New(config)
+  helper.Controller = NewImageChangeTriggerController(config)
   helper.Client.GenerationResult = regeneratedConfig()
 
   return helper
 }
 
 func TestImageChangeForUnregisteredTag(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newIcTestHelper()
   helper.Controller.OneImageRepo()
   helper.ImageRepo = unregisteredTagUpdate()
   helper.Controller.OneImageRepo()
@@ -49,7 +49,7 @@ func TestImageChangeForUnregisteredTag(t *testing.T) {
 }
 
 func TestImageChange(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newIcTestHelper()
   helper.Controller.OneImageRepo()
   helper.ImageRepo = tagUpdate()
   helper.Controller.OneImageRepo()
@@ -194,40 +194,18 @@ func regeneratedConfig() *deployapi.DeploymentConfig {
   }
 }
 
-type FakeOsClient struct {
+type icFakeOsClient struct {
   osclient.Fake
   GenerationResult *deployapi.DeploymentConfig
   Error            error
 }
 
-func (c *FakeOsClient) GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error) {
+func (c *icFakeOsClient) GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error) {
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "generate-deployment-config", Value: id})
   return c.GenerationResult, c.Error
 }
 
-func (c *FakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+func (c *icFakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "update-deployment-config", Value: config})
   return config, c.Error
 }
-
-type fakeStore struct {
-  DeploymentConfig *deployapi.DeploymentConfig
-}
-
-func newFakeStore() fakeStore {
-  return fakeStore{imageChangeDeploymentConfig()}
-}
-
-func (s fakeStore) Add(id string, obj interface{})    {}
-func (s fakeStore) Update(id string, obj interface{}) {}
-func (s fakeStore) Delete(id string)                  {}
-func (s fakeStore) List() []interface{} {
-  return []interface{}{s.DeploymentConfig}
-}
-func (s fakeStore) Contains() util.StringSet {
-  return util.NewStringSet()
-}
-func (s fakeStore) Get(id string) (item interface{}, exists bool) {
-  return nil, false
-}
-func (s fakeStore) Replace(idToObj map[string]interface{}) {}

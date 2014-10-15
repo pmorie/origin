@@ -1,4 +1,4 @@
-package deploymentcontroller
+package controller
 
 import (
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -12,10 +12,10 @@ import (
 
 // A DeploymentController is responsible for executing Deployment objects stored in etcd
 type DeploymentController struct {
-	config *Config
+	config *DeploymentControllerConfig
 }
 
-type Config struct {
+type DeploymentControllerConfig struct {
 	OsClient       osclient.Interface
 	KubeClient     kubeclient.Interface
 	Environment    []kapi.EnvVar
@@ -23,7 +23,7 @@ type Config struct {
 }
 
 // NewDeploymentController creates a new DeploymentController.
-func New(config *Config) *DeploymentController {
+func NewDeploymentController(config *DeploymentControllerConfig) *DeploymentController {
 	return &DeploymentController{
 		config: config,
 	}

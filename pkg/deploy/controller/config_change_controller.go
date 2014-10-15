@@ -1,4 +1,4 @@
-package configchangetrigger
+package controller
 
 import (
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -13,16 +13,16 @@ import (
 )
 
 type ConfigChangeTriggerController struct {
-  config *Config
+  config *ConfigChangeTriggerControllerConfig
 }
 
-type Config struct {
+type ConfigChangeTriggerControllerConfig struct {
   OsClient             osclient.Interface
   NextDeploymentConfig func() *deployapi.DeploymentConfig
   DeploymentStore      cache.Store
 }
 
-func New(config *Config) *ConfigChangeTriggerController {
+func NewConfigChangeTriggerController(config *ConfigChangeTriggerControllerConfig) *ConfigChangeTriggerController {
   return &ConfigChangeTriggerController{
     config: config,
   }

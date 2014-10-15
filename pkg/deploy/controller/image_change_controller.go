@@ -1,4 +1,4 @@
-package imagechangetrigger
+package controller
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-type Config struct {
+type ImageChangeControllerConfig struct {
 	Client osclient.Interface
 
 	NextImageRepository func() *imageapi.ImageRepository
@@ -22,11 +22,11 @@ type Config struct {
 }
 
 type ImageChangeTriggerController struct {
-	config *Config
+	config *ImageChangeControllerConfig
 }
 
 // NewDeploymentTriggerController creates a new DeploymentTriggerController.
-func New(config *Config) *ImageChangeTriggerController {
+func NewImageChangeTriggerController(config *ImageChangeControllerConfig) *ImageChangeTriggerController {
 	return &ImageChangeTriggerController{
 		config: config,
 	}

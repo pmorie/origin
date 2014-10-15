@@ -1,41 +1,41 @@
-package configchangetrigger
+package controller
 
 import (
   "testing"
 
   kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-  "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
   osclient "github.com/openshift/origin/pkg/client"
   deployapi "github.com/openshift/origin/pkg/deploy/api"
+  deploytest "github.com/openshift/origin/pkg/deploy/controller/test"
 )
 
-type TestHelper struct {
+type cctcTestHelper struct {
   Client           *FakeOsClient
   DeploymentConfig *deployapi.DeploymentConfig
   Controller       *ConfigChangeTriggerController
 }
 
-func NewTestHelper() *TestHelper {
+func newCctcTestHelper() *cctcTestHelper {
   client := &FakeOsClient{}
-  helper := &TestHelper{
+  helper := &cctcTestHelper{
     Client:           client,
     DeploymentConfig: initialConfig(),
   }
-  config := &Config{
+  config := &ConfigChangeTriggerControllerConfig{
     OsClient: client,
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return helper.DeploymentConfig
     },
-    DeploymentStore: newFakeStore(),
+    DeploymentStore: deploytest.NewFakeDeploymentStore(matchingInitialDeployment()),
   }
-  helper.Controller = New(config)
+  helper.Controller = NewConfigChangeTriggerController(config)
 
   return helper
 }
 
 // Test the controller's response to a new DeploymentConfig
-func TestNewDeploymentConfig(t *testing.T) {
-  helper := NewTestHelper()
+func TestNewConfig(t *testing.T) {
+  helper := newCctcTestHelper()
   helper.Controller.HandleDeploymentConfig()
 
   if len(helper.Client.Actions) != 0 {
@@ -45,7 +45,7 @@ func TestNewDeploymentConfig(t *testing.T) {
 
 // Test the controller's response when the pod template is changed
 func TestChangeWithTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newCctcTestHelper()
   helper.Controller.HandleDeploymentConfig()
   helper.DeploymentConfig = diffedConfig()
   helper.Controller.HandleDeploymentConfig()
@@ -64,7 +64,7 @@ func TestChangeWithTemplateDiff(t *testing.T) {
 }
 
 func TestChangeWithoutTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newCctcTestHelper()
   helper.Controller.HandleDeploymentConfig()
   helper.Controller.HandleDeploymentConfig()
 
@@ -199,7 +199,7 @@ func generatedConfig() *deployapi.DeploymentConfig {
   }
 }
 
-func matchingDeployment() *deployapi.Deployment {
+func matchingInitialDeployment() *deployapi.Deployment {
   return &deployapi.Deployment{
     JSONBase: kapi.JSONBase{ID: "manual-deploy-config-1"},
     State:    deployapi.DeploymentStateNew,
@@ -250,29 +250,3 @@ func (c *FakeOsClient) UpdateDeploymentConfig(ctx kapi.Context, config *deployap
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "update-deployment-config", Value: config})
   return config, c.Error
 }
-
-type fakeStore struct {
-  Deployment *deployapi.Deployment
-}
-
-func newFakeStore() fakeStore {
-  return fakeStore{matchingDeployment()}
-}
-
-func (s fakeStore) Add(id string, obj interface{})    {}
-func (s fakeStore) Update(id string, obj interface{}) {}
-func (s fakeStore) Delete(id string)                  {}
-func (s fakeStore) List() []interface{} {
-  return []interface{}{s.Deployment}
-}
-func (s fakeStore) Contains() util.StringSet {
-  return util.NewStringSet()
-}
-func (s fakeStore) Get(id string) (item interface{}, exists bool) {
-  if s.Deployment == nil {
-    return nil, false
-  }
-
-  return s.Deployment, true
-}
-func (s fakeStore) Replace(idToObj map[string]interface{}) {}

@@ -1,4 +1,4 @@
-package configcontroller
+package controller
 
 import (
   "testing"
@@ -86,52 +86,52 @@ func matchingDeployment() *deployapi.Deployment {
   }
 }
 
-type FakeOsClient struct {
+type dccFakeOsClient struct {
   osclient.Fake
   Deployment *deployapi.Deployment
   Error      error
 }
 
-func (c *FakeOsClient) GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error) {
+func (c *dccFakeOsClient) GetDeployment(ctx kapi.Context, id string) (*deployapi.Deployment, error) {
   return c.Deployment, c.Error
 }
 
-func (c *FakeOsClient) CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
+func (c *dccFakeOsClient) CreateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error) {
   c.Actions = append(c.Actions, osclient.FakeAction{Action: "create-deployment", Value: deployment})
   return deployment, c.Error
 }
 
-type TestHelper struct {
-  OsClient                   *FakeOsClient
-  DeploymentConfig           *deployapi.DeploymentConfig
-  DeploymentConfigController *DeploymentConfigController
+type dccTestHelper struct {
+  OsClient         *dccFakeOsClient
+  DeploymentConfig *deployapi.DeploymentConfig
+  Controller       *DeploymentConfigController
 }
 
-func NewTestHelper() *TestHelper {
-  osClient := &FakeOsClient{}
+func newDCCTestHelper() *dccTestHelper {
+  osClient := &dccFakeOsClient{}
 
   deploymentConfig := manualDeploymentConfig()
 
-  config := &Config{
+  config := &DeploymentConfigControllerConfig{
     Client: osClient,
     NextDeploymentConfig: func() *deployapi.DeploymentConfig {
       return deploymentConfig
     },
   }
 
-  return &TestHelper{
-    OsClient:                   osClient,
-    DeploymentConfig:           deploymentConfig,
-    DeploymentConfigController: New(config),
+  return &dccTestHelper{
+    OsClient:         osClient,
+    DeploymentConfig: deploymentConfig,
+    Controller:       NewDeploymentConfigController(config),
   }
 }
 
 func TestHandleNewDeploymentConfig(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 0
 
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   if len(helper.OsClient.Actions) != 0 {
     t.Fatalf("expected no client activity, found: %s", helper.OsClient.Actions)
@@ -139,12 +139,12 @@ func TestHandleNewDeploymentConfig(t *testing.T) {
 }
 
 func TestHandleInitialDeployment(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Error = kerrors.NewNotFound("deployment", "id")
 
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   if e, a := helper.DeploymentConfig.ID, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).Labels[deployapi.DeploymentConfigIDLabel]; e != a {
     t.Fatalf("expected deployment with label %s, got %s", e, a)
@@ -152,14 +152,14 @@ func TestHandleInitialDeployment(t *testing.T) {
 }
 
 func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Deployment = matchingDeployment()
 
   // verify that no new deployment was made due to a lack
   // of differences in the pod templates
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   for _, a := range helper.OsClient.Actions {
     if a.Action == "create-deployment" {
@@ -169,14 +169,14 @@ func TestHandleConfigChangeNoPodTemplateDiff(t *testing.T) {
 }
 
 func TestHandleConfigChangeWithPodTemplateDiff(t *testing.T) {
-  helper := NewTestHelper()
+  helper := newDCCTestHelper()
 
   helper.DeploymentConfig.LatestVersion = 1
   helper.OsClient.Deployment = matchingDeployment()
   helper.DeploymentConfig.Template.ControllerTemplate.PodTemplate.Labels["foo"] = "bar"
 
   // verify that a new deployment results from the change in config
-  helper.DeploymentConfigController.HandleDeploymentConfig()
+  helper.Controller.HandleDeploymentConfig()
 
   if e, a := helper.DeploymentConfig.ID, helper.OsClient.Actions[0].Value.(*deployapi.Deployment).Labels[deployapi.DeploymentConfigIDLabel]; e != a {
     t.Fatalf("expected deployment with label %s, got %s", e, a)
