@@ -1,8 +1,6 @@
 package validation
 
 import (
-	"strconv"
-
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/validation"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -13,9 +11,9 @@ import (
 //       upstream and fix when it goes in.
 
 func ValidateDeployment(deployment *deployapi.Deployment) errors.ErrorList {
-	result := validateDeploymentStrategy(&deployment.Strategy).Prefix("Strategy")
+	result := validateDeploymentStrategy(&deployment.Strategy).Prefix("strategy")
 	controllerStateErrors := validation.ValidateReplicationControllerState(&deployment.ControllerTemplate)
-	result = append(result, controllerStateErrors.Prefix("ControllerTemplate")...)
+	result = append(result, controllerStateErrors.Prefix("controllerTemplate")...)
 
 	return result
 }
@@ -24,14 +22,14 @@ func validateDeploymentStrategy(strategy *deployapi.DeploymentStrategy) errors.E
 	result := errors.ErrorList{}
 
 	if len(strategy.Type) == 0 {
-		result = append(result, errors.NewFieldRequired("Type", ""))
+		result = append(result, errors.NewFieldRequired("type", ""))
 	}
 
 	if strategy.Type == deployapi.DeploymentStrategyTypeCustomPod {
 		if strategy.CustomPod == nil {
-			result = append(result, errors.NewFieldRequired("CustomPod", nil))
+			result = append(result, errors.NewFieldRequired("customPod", nil))
 		} else {
-			result = append(result, validateCustomPodStrategy(strategy.CustomPod).Prefix("CustomPod")...)
+			result = append(result, validateCustomPodStrategy(strategy.CustomPod).Prefix("customPod")...)
 		}
 	}
 
@@ -42,7 +40,7 @@ func validateCustomPodStrategy(customPod *deployapi.CustomPodDeploymentStrategy)
 	result := errors.ErrorList{}
 
 	if len(customPod.Image) == 0 {
-		result = append(result, errors.NewFieldRequired("Image", ""))
+		result = append(result, errors.NewFieldRequired("image", ""))
 	}
 
 	return result
@@ -52,14 +50,14 @@ func validateTrigger(trigger *deployapi.DeploymentTriggerPolicy) errors.ErrorLis
 	result := errors.ErrorList{}
 
 	if len(trigger.Type) == 0 {
-		result = append(result, errors.NewFieldRequired("Type", ""))
+		result = append(result, errors.NewFieldRequired("type", ""))
 	}
 
 	if trigger.Type == deployapi.DeploymentTriggerOnImageChange {
 		if trigger.ImageChangeParams == nil {
-			result = append(result, errors.NewFieldRequired("ImageChangeParams", nil))
+			result = append(result, errors.NewFieldRequired("imageChangeParams", nil))
 		} else {
-			result = append(result, validateImageChangeParams(trigger.ImageChangeParams).Prefix("ImageChangeParams")...)
+			result = append(result, validateImageChangeParams(trigger.ImageChangeParams).Prefix("imageChangeParams")...)
 		}
 	}
 
@@ -70,11 +68,11 @@ func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangePar
 	result := errors.ErrorList{}
 
 	if len(params.RepositoryName) == 0 {
-		result = append(result, errors.NewFieldRequired("RepositoryName", ""))
+		result = append(result, errors.NewFieldRequired("repositoryName", ""))
 	}
 
 	if len(params.ContainerNames) == 0 {
-		result = append(result, errors.NewFieldRequired("ContainerNames", ""))
+		result = append(result, errors.NewFieldRequired("containerNames", ""))
 	}
 
 	return result
@@ -84,12 +82,12 @@ func ValidateDeploymentConfig(config *deployapi.DeploymentConfig) errors.ErrorLi
 	result := errors.ErrorList{}
 
 	for i, _ := range config.Triggers {
-		result = append(result, validateTrigger(&config.Triggers[i]).Prefix("Triggers["+strconv.Itoa(i)+"]")...)
+		result = append(result, validateTrigger(&config.Triggers[i]).PrefixIndex(i).Prefix("triggers")...)
 	}
 
-	result = append(result, validateDeploymentStrategy(&config.Template.Strategy).Prefix("Template.Strategy")...)
+	result = append(result, validateDeploymentStrategy(&config.Template.Strategy).Prefix("template.strategy")...)
 	controllerStateErrors := validation.ValidateReplicationControllerState(&config.Template.ControllerTemplate)
-	result = append(result, controllerStateErrors.Prefix("Template.ControllerTemplate")...)
+	result = append(result, controllerStateErrors.Prefix("template.controllerTemplate")...)
 
 	return result
 }
