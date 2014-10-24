@@ -45,8 +45,8 @@ func (factory *BasicDeploymentControllerFactory) Create() *controller.BasicDeplo
   cache.NewReflector(&deploymentLW{client: factory.Client, field: field}, &deployapi.Deployment{}, queue).Run()
 
   return &controller.BasicDeploymentController{
-    DeploymentInterface:            factory.Client,
-    ReplicationControllerInterface: factory.KubeClient,
+    DeploymentUpdater:           factory.Client,
+    ReplicationControllerClient: factory.KubeClient,
     NextDeployment: func() *deployapi.Deployment {
       return queue.Pop().(*deployapi.Deployment)
     },
