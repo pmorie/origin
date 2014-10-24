@@ -70,7 +70,7 @@ func TestHandleInitialDeployment(t *testing.T) {
     t.Fatalf("expected a deployment")
   }
 
-  if e, a := deploymentConfig.ID, deployed.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+  if e, a := deploymentConfig.ID, deployed.Labels[deployapi.DeploymentConfigLabel]; e != a {
     t.Fatalf("expected deployment with label %s, got %s", e, a)
   }
 }
@@ -124,7 +124,7 @@ func TestHandleConfigChangeWithPodTemplateDiff(t *testing.T) {
     t.Fatalf("expected a deployment")
   }
 
-  if e, a := deploymentConfig.ID, deployed.Labels[deployapi.DeploymentConfigIDLabel]; e != a {
+  if e, a := deploymentConfig.ID, deployed.Labels[deployapi.DeploymentConfigLabel]; e != a {
     t.Fatalf("expected deployment with label %s, got %s", e, a)
   }
 }
