@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/glog"
 
+	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
@@ -72,25 +73,14 @@ func (g *DeploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 			glog.V(4).Infof("No tag %s found for repository %s (potentially invalid DeploymentConfig status)", tag, repoName)
 			continue
 		}
+
 		newImage := repo.DockerImageRepository + ":" + tag
-
-		containersToCheck := util.NewStringSet(params.ContainerNames...)
-		for i, container := range configPodTemplate.DesiredState.Manifest.Containers {
-			if !containersToCheck.Has(container.Name) {
-				continue
-			}
-
-			// TODO: If we grow beyond this single mutation, diffing hashes of
-			// a clone of the original config vs the mutation would be more generic.
-			if newImage != container.Image {
-				configPodTemplate.DesiredState.Manifest.Containers[i].Image = newImage
-			}
-		}
+		updateContainers(&configPodTemplate, util.NewStringSet(params.ContainerNames...), newImage)
 	}
 
 	if deployment == nil {
 		if deploymentConfig.LatestVersion == 0 {
-			// TODO: Is this a safe assumption? -- NO
+			// If the latest version is zero, and the generation's being called, bump it.
 			deploymentConfig.LatestVersion = 1
 		}
 	} else if !deployutil.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
@@ -98,6 +88,20 @@ func (g *DeploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 	}
 
 	return deploymentConfig, nil
+}
+
+func updateContainers(template *kapi.PodTemplate, containers util.StringSet, newImage string) {
+	for i, container := range template.DesiredState.Manifest.Containers {
+		if !containers.Has(container.Name) {
+			continue
+		}
+
+		// TODO: If we grow beyond this single mutation, diffing hashes of
+		// a clone of the original config vs the mutation would be more generic.
+		if newImage != container.Image {
+			template.DesiredState.Manifest.Containers[i].Image = newImage
+		}
+	}
 }
 
 func imageReposByDockerImageRepo(imageRepoInterface imageRepositoryInterface, filter *util.StringSet) map[string]imageapi.ImageRepository {

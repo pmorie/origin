@@ -40,7 +40,6 @@ func init() {
 
 func TestSuccessfulManualDeployment(t *testing.T) {
 	deleteAllEtcdKeys()
-	defer deleteAllEtcdKeys()
 	openshift := NewTestOpenshift(t)
 
 	config := manualDeploymentConfig()
@@ -75,7 +74,6 @@ func TestSuccessfulManualDeployment(t *testing.T) {
 
 func TestSimpleImageChangeTrigger(t *testing.T) {
 	deleteAllEtcdKeys()
-	defer deleteAllEtcdKeys()
 	openshift := NewTestOpenshift(t)
 
 	imageRepo := &imageapi.ImageRepository{
@@ -139,7 +137,6 @@ func TestSimpleImageChangeTrigger(t *testing.T) {
 
 func TestSimpleConfigChangeTrigger(t *testing.T) {
 	deleteAllEtcdKeys()
-	defer deleteAllEtcdKeys()
 	openshift := NewTestOpenshift(t)
 
 	config := changeDeploymentConfig()
