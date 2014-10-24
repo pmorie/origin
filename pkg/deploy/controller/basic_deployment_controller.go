@@ -70,9 +70,9 @@ func (dc *BasicDeploymentController) handleNew(ctx kapi.Context, deployment *dep
   var replicationControllers *kapi.ReplicationControllerList
   var err error
 
-  configID, hasConfigID := deployment.Labels[deployapi.DeploymentConfigIDLabel]
+  configID, hasConfigID := deployment.Labels[deployapi.DeploymentConfigLabel]
   if hasConfigID {
-    selector, _ := labels.ParseSelector(deployapi.DeploymentConfigIDLabel + "=" + configID)
+    selector, _ := labels.ParseSelector(deployapi.DeploymentConfigLabel + "=" + configID)
     replicationControllers, err = dc.ReplicationControllerInterface.ListReplicationControllers(ctx, selector)
     if err != nil {
       glog.V(2).Infof("Unable to get list of replication controllers for previous deploymentConfig %s: %v\n", configID, err)
@@ -82,14 +82,14 @@ func (dc *BasicDeploymentController) handleNew(ctx kapi.Context, deployment *dep
 
   controller := &kapi.ReplicationController{
     DesiredState: deployment.ControllerTemplate,
-    Labels:       map[string]string{deployapi.DeploymentConfigIDLabel: configID, "deploymentID": deployment.ID},
+    Labels:       map[string]string{deployapi.DeploymentConfigLabel: configID, "deploymentID": deployment.ID},
   }
 
   if controller.DesiredState.PodTemplate.Labels == nil {
     controller.DesiredState.PodTemplate.Labels = make(map[string]string)
   }
 
-  controller.DesiredState.PodTemplate.Labels[deployapi.DeploymentConfigIDLabel] = configID
+  controller.DesiredState.PodTemplate.Labels[deployapi.DeploymentConfigLabel] = configID
   controller.DesiredState.PodTemplate.Labels["deploymentID"] = deployment.ID
 
   glog.V(2).Infof("Creating replicationController for deployment %s", deployment.ID)
@@ -101,7 +101,7 @@ func (dc *BasicDeploymentController) handleNew(ctx kapi.Context, deployment *dep
   allReplControllersProcessed := true
   // For this simple deploy, remove previous replication controllers
   for _, rc := range replicationControllers.Items {
-    configID, _ := deployment.Labels[deployapi.DeploymentConfigIDLabel]
+    configID, _ := deployment.Labels[deployapi.DeploymentConfigLabel]
     glog.V(2).Infof("Stopping replication controller for previous deploymentConfig %s: %v", configID, rc.ID)
 
     replicationController, err := dc.ReplicationControllerInterface.GetReplicationController(ctx, rc.ID)
@@ -121,7 +121,7 @@ func (dc *BasicDeploymentController) handleNew(ctx kapi.Context, deployment *dep
   }
 
   for _, rc := range replicationControllers.Items {
-    configID, _ := deployment.Labels[deployapi.DeploymentConfigIDLabel]
+    configID, _ := deployment.Labels[deployapi.DeploymentConfigLabel]
     glog.V(2).Infof("Deleting replication controller %s for previous deploymentConfig %s", rc.ID, configID)
     err := dc.ReplicationControllerInterface.DeleteReplicationController(ctx, rc.ID)
     if err != nil {

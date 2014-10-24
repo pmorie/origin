@@ -11,7 +11,7 @@ import (
 
 // DeploymentConfigController is responsible for creating a Deployment when a DeploymentConfig is
 // updated with a new LatestVersion. Any deployment created is correlated to a DeploymentConfig
-// by setting the DeploymentConfigIDLabel on the deployment.
+// by setting the DeploymentConfigLabel on the deployment.
 type DeploymentConfigController struct {
 	DeploymentInterface deploymentInterface
 
@@ -96,7 +96,7 @@ func (c *DeploymentConfigController) deploy(ctx kapi.Context, config *deployapi.
 	for k, v := range config.Labels {
 		labels[k] = v
 	}
-	labels[deployapi.DeploymentConfigIDLabel] = config.ID
+	labels[deployapi.DeploymentConfigLabel] = config.ID
 
 	deployment := &deployapi.Deployment{
 		JSONBase: kapi.JSONBase{

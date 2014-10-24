@@ -38,9 +38,9 @@ const (
 	DeploymentStatusFailed DeploymentStatus = "Failed"
 )
 
-// DeploymentConfigIDLabel is the key of a Deployment label whose value is the ID of a DeploymentConfig
+// DeploymentConfigLabel is the key of a Deployment label whose value is the ID of a DeploymentConfig
 // on which the Deployment is based.
-const DeploymentConfigIDLabel = "deploymentConfigID"
+const DeploymentConfigLabel = "deploymentConfig"
 
 // DeploymentStrategy describes how to perform a deployment.
 type DeploymentStrategy struct {
