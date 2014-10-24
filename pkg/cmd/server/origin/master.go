@@ -282,7 +282,7 @@ func (c *MasterConfig) RunDeploymentConfigController() {
 	controller.Run()
 }
 
-func (c *MasterConfig) RunConfigChangeController() {
+func (c *MasterConfig) RunDeploymentConfigChangeController() {
 	factory := deploycontrollerfactory.ConfigChangeControllerFactory{c.OSClient}
 	controller := factory.Create()
 	controller.Run()
