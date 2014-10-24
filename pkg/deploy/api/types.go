@@ -4,7 +4,8 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 )
 
-// A Deployment represents a single unique realization of a DeploymentConfig.
+// A deployment represents a single configuration of a pod deployed into the cluster, and may
+// represent both a current deployment or a historical deployment.
 type Deployment struct {
 	api.JSONBase       `json:",inline" yaml:",inline"`
 	Labels             map[string]string              `json:"labels,omitempty" yaml:"labels,omitempty"`
@@ -25,9 +26,11 @@ type DeploymentStatus string
 const (
 	// DeploymentStatusNew means the deployment has been accepted but not yet acted upon.
 	DeploymentStatusNew DeploymentStatus = "New"
-	// DeploymentStatusPending means the deployment has been initialized but isn't yet running.
+	// DeploymentStatusPending means the deployment been handed over to a deployment strategy,
+	// but the strategy has not yet declared the deployment to be running.
 	DeploymentStatusPending DeploymentStatus = "Pending"
-	// DeploymentStatusRunning means the deployment is in progress.
+	// DeploymentStatusRunning means the deployment strategy has reported the deployment as
+	// being in-progress.
 	DeploymentStatusRunning DeploymentStatus = "Running"
 	// DeploymentStatusComplete means the deployment finished without an error.
 	DeploymentStatusComplete DeploymentStatus = "Complete"
