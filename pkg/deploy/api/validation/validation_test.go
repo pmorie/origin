@@ -78,7 +78,7 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 		T errors.ValidationErrorType
 		F string
 	}{
-		"missing Strategy.Type": {
+		"missing strategy.type": {
 			api.Deployment{
 				Strategy: api.DeploymentStrategy{
 					CustomPod: okCustomPod(),
@@ -86,9 +86,9 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 				ControllerTemplate: okControllerTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Strategy.Type",
+			"strategy.type",
 		},
-		"missing Strategy.CustomPod": {
+		"missing strategy.customPod": {
 			api.Deployment{
 				Strategy: api.DeploymentStrategy{
 					Type: api.DeploymentStrategyTypeCustomPod,
@@ -96,9 +96,9 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 				ControllerTemplate: okControllerTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Strategy.CustomPod",
+			"strategy.customPod",
 		},
-		"missing Strategy.CustomPod.Image": {
+		"missing strategy.customPod.image": {
 			api.Deployment{
 				Strategy: api.DeploymentStrategy{
 					Type:      api.DeploymentStrategyTypeCustomPod,
@@ -107,7 +107,7 @@ func TestValidateDeploymentMissingFields(t *testing.T) {
 				ControllerTemplate: okControllerTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Strategy.CustomPod.Image",
+			"strategy.customPod.image",
 		},
 	}
 
@@ -144,7 +144,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 		T errors.ValidationErrorType
 		F string
 	}{
-		"missing Trigger.Type": {
+		"missing trigger.type": {
 			api.DeploymentConfig{
 				Triggers: []api.DeploymentTriggerPolicy{
 					{
@@ -156,9 +156,9 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				Template: okDeploymentTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Triggers[0].Type",
+			"triggers[0].type",
 		},
-		"missing Trigger ImageChangeParams.RepositoryName": {
+		"missing Trigger imageChangeParams.repositoryName": {
 			api.DeploymentConfig{
 				Triggers: []api.DeploymentTriggerPolicy{
 					{
@@ -171,9 +171,9 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				Template: okDeploymentTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Triggers[0].ImageChangeParams.RepositoryName",
+			"triggers[0].imageChangeParams.repositoryName",
 		},
-		"missing Trigger ImageChangeParams.ContainerNames": {
+		"missing Trigger imageChangeParams.containerNames": {
 			api.DeploymentConfig{
 				Triggers: []api.DeploymentTriggerPolicy{
 					{
@@ -186,9 +186,9 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				Template: okDeploymentTemplate(),
 			},
 			errors.ValidationErrorTypeRequired,
-			"Triggers[0].ImageChangeParams.ContainerNames",
+			"triggers[0].imageChangeParams.containerNames",
 		},
-		"missing Strategy.Type": {
+		"missing strategy.type": {
 			api.DeploymentConfig{
 				Triggers: manualTrigger(),
 				Template: api.DeploymentTemplate{
@@ -199,9 +199,9 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				},
 			},
 			errors.ValidationErrorTypeRequired,
-			"Template.Strategy.Type",
+			"template.strategy.type",
 		},
-		"missing Strategy.CustomPod": {
+		"missing strategy.customPod": {
 			api.DeploymentConfig{
 				Triggers: manualTrigger(),
 				Template: api.DeploymentTemplate{
@@ -212,9 +212,9 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				},
 			},
 			errors.ValidationErrorTypeRequired,
-			"Template.Strategy.CustomPod",
+			"template.strategy.customPod",
 		},
-		"missing Template.Strategy.CustomPod.Image": {
+		"missing template.strategy.customPod.Image": {
 			api.DeploymentConfig{
 				Triggers: manualTrigger(),
 				Template: api.DeploymentTemplate{
@@ -226,7 +226,7 @@ func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 				},
 			},
 			errors.ValidationErrorTypeRequired,
-			"Template.Strategy.CustomPod.Image",
+			"template.strategy.customPod.image",
 		},
 	}
 
