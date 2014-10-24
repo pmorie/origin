@@ -199,10 +199,6 @@ func basicDeployment() *deployapi.Deployment {
     Status:   deployapi.DeploymentStatusNew,
     Strategy: deployapi.DeploymentStrategy{
       Type: deployapi.DeploymentStrategyTypeBasic,
-      CustomPod: &deployapi.CustomPodDeploymentStrategy{
-        Image:       "registry:8080/repo1:ref1",
-        Environment: []kapi.EnvVar{},
-      },
     },
     ControllerTemplate: kapi.ReplicationControllerState{
       PodTemplate: kapi.PodTemplate{
@@ -222,31 +218,16 @@ func basicDeployment() *deployapi.Deployment {
 }
 
 func customPodDeployment() *deployapi.Deployment {
-  return &deployapi.Deployment{
-    JSONBase: kapi.JSONBase{ID: "deploy1"},
-    Status:   deployapi.DeploymentStatusNew,
-    Strategy: deployapi.DeploymentStrategy{
-      Type: deployapi.DeploymentStrategyTypeCustomPod,
-      CustomPod: &deployapi.CustomPodDeploymentStrategy{
-        Image:       "registry:8080/repo1:ref1",
-        Environment: []kapi.EnvVar{},
-      },
-    },
-    ControllerTemplate: kapi.ReplicationControllerState{
-      PodTemplate: kapi.PodTemplate{
-        DesiredState: kapi.PodState{
-          Manifest: kapi.ContainerManifest{
-            Containers: []kapi.Container{
-              {
-                Name:  "container1",
-                Image: "registry:8080/repo1:ref1",
-              },
-            },
-          },
-        },
-      },
+  d := basicDeployment()
+  d.Strategy = deployapi.DeploymentStrategy{
+    Type: deployapi.DeploymentStrategyTypeCustomPod,
+    CustomPod: &deployapi.CustomPodDeploymentStrategy{
+      Image:       "registry:8080/repo1:ref1",
+      Environment: []kapi.EnvVar{},
     },
   }
+
+  return d
 }
 
 func pendingDeployment() *deployapi.Deployment {
@@ -261,27 +242,9 @@ func runningDeployment() *deployapi.Deployment {
   return d
 }
 
-func terminatedPod(exitCode int) *kapi.Pod {
+func basicPod() *kapi.Pod {
   return &kapi.Pod{
     CurrentState: kapi.PodState{
-      Status: kapi.PodTerminated,
-      Info: kapi.PodInfo{
-        "container1": kapi.ContainerStatus{
-          State: kapi.ContainerState{
-            Termination: &kapi.ContainerStateTerminated{
-              ExitCode: exitCode,
-            },
-          },
-        },
-      },
-    },
-  }
-}
-
-func runningPod() *kapi.Pod {
-  return &kapi.Pod{
-    CurrentState: kapi.PodState{
-      Status: kapi.PodRunning,
       Info: kapi.PodInfo{
         "container1": kapi.ContainerStatus{},
       },
@@ -290,4 +253,24 @@ func runningPod() *kapi.Pod {
       "deployment": "1234",
     },
   }
+}
+
+func terminatedPod(exitCode int) *kapi.Pod {
+  p := basicPod()
+  p.CurrentState.Status = kapi.PodTerminated
+  p.CurrentState.Info["container1"] = kapi.ContainerStatus{
+    State: kapi.ContainerState{
+      Termination: &kapi.ContainerStateTerminated{
+        ExitCode: exitCode,
+      },
+    },
+  }
+
+  return p
+}
+
+func runningPod() *kapi.Pod {
+  p := basicPod()
+  p.CurrentState.Status = kapi.PodRunning
+  return p
 }
