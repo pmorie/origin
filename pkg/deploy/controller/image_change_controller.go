@@ -27,27 +27,39 @@ type icDeploymentConfigInterface interface {
 	GenerateDeploymentConfig(ctx kapi.Context, id string) (*deployapi.DeploymentConfig, error)
 }
 
-// Process ImageRepository events one by one.
+// Run processes ImageRepository events one by one.
 func (c *ImageChangeController) Run() {
-	go util.Forever(c.OneImageRepo, 0)
+	go util.Forever(c.HandleImageRepo, 0)
 }
 
-// Process the next ImageRepository event.
-func (c *ImageChangeController) OneImageRepo() {
+// HandleImageRepo processes the next ImageRepository event.
+func (c *ImageChangeController) HandleImageRepo() {
 	imageRepo := c.NextImageRepository()
 	configIDs := []string{}
 
 	for _, c := range c.DeploymentConfigStore.List() {
 		config := c.(*deployapi.DeploymentConfig)
 		glog.V(4).Infof("Detecting changed images for deploymentConfig %s", config.ID)
-		for _, params := range configImageTriggers(config) {
+
+		// Extract relevant triggers for this imageRepo for this config
+		triggersForConfig := []deployapi.DeploymentTriggerImageChangeParams{}
+		for _, trigger := range config.Triggers {
+			if trigger.Type == deployapi.DeploymentTriggerOnImageChange &&
+				trigger.ImageChangeParams.Automatic &&
+				trigger.ImageChangeParams.RepositoryName == imageRepo.DockerImageRepository {
+				triggersForConfig = append(triggersForConfig, *trigger.ImageChangeParams)
+			}
+		}
+
+		for _, params := range triggersForConfig {
 			glog.V(4).Infof("Processing image triggers for deploymentConfig %s", config.ID)
+			containerNames := util.NewStringSet(params.ContainerNames...)
 			for _, container := range config.Template.ControllerTemplate.PodTemplate.DesiredState.Manifest.Containers {
-				repoName, tag := parseImage(container.Image)
-				if repoName != params.RepositoryName {
+				if !containerNames.Has(container.Name) {
 					continue
 				}
 
+				_, tag := parseImage(container.Image)
 				if tag != imageRepo.Tags[params.Tag] {
 					configIDs = append(configIDs, config.ID)
 				}
@@ -88,22 +100,4 @@ func parseImage(name string) (string, string) {
 	}
 
 	return name[:index], name[index+1:]
-}
-
-func configImageTriggers(config *deployapi.DeploymentConfig) []deployapi.DeploymentTriggerImageChangeParams {
-	res := []deployapi.DeploymentTriggerImageChangeParams{}
-
-	for _, trigger := range config.Triggers {
-		if trigger.Type != deployapi.DeploymentTriggerOnImageChange {
-			continue
-		}
-
-		if !trigger.ImageChangeParams.Automatic {
-			continue
-		}
-
-		res = append(res, *trigger.ImageChangeParams)
-	}
-
-	return res
 }

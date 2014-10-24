@@ -21,9 +21,9 @@ func (i *testIcDeploymentConfigInterface) GenerateDeploymentConfig(ctx kapi.Cont
   return i.GenerateDeploymentConfigFunc(id)
 }
 
-func TestImageChangeForUnregisteredTag(t *testing.T) {
-  configWithManualTrigger := imageChangeDeploymentConfig()
-  configWithManualTrigger.Triggers[0].ImageChangeParams.Automatic = false
+func TestUnregisteredContainer(t *testing.T) {
+  config := unregisteredConfig()
+  config.Triggers[0].ImageChangeParams.Automatic = false
 
   controller := &ImageChangeController{
     DeploymentConfigInterface: &testIcDeploymentConfigInterface{
@@ -39,11 +39,36 @@ func TestImageChangeForUnregisteredTag(t *testing.T) {
     NextImageRepository: func() *imageapi.ImageRepository {
       return tagUpdate()
     },
-    DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(configWithManualTrigger),
+    DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(config),
   }
 
   // verify no-op
-  controller.OneImageRepo()
+  controller.HandleImageRepo()
+}
+
+func TestImageChangeForUnregisteredTag(t *testing.T) {
+  config := imageChangeDeploymentConfig()
+  config.Triggers[0].ImageChangeParams.Automatic = false
+
+  controller := &ImageChangeController{
+    DeploymentConfigInterface: &testIcDeploymentConfigInterface{
+      UpdateDeploymentConfigFunc: func(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
+        t.Fatalf("unexpected deployment config update")
+        return nil, nil
+      },
+      GenerateDeploymentConfigFunc: func(id string) (*deployapi.DeploymentConfig, error) {
+        t.Fatalf("unexpected generator call")
+        return nil, nil
+      },
+    },
+    NextImageRepository: func() *imageapi.ImageRepository {
+      return tagUpdate()
+    },
+    DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(config),
+  }
+
+  // verify no-op
+  controller.HandleImageRepo()
 }
 
 func TestImageChange(t *testing.T) {
@@ -69,7 +94,7 @@ func TestImageChange(t *testing.T) {
     DeploymentConfigStore: deploytest.NewFakeDeploymentConfigStore(imageChangeDeploymentConfig()),
   }
 
-  controller.OneImageRepo()
+  controller.HandleImageRepo()
 
   if generatedConfig == nil {
     t.Fatalf("expected config generation to occur")
@@ -209,4 +234,10 @@ func regeneratedConfig() *deployapi.DeploymentConfig {
       },
     },
   }
+}
+
+func unregisteredConfig() *deployapi.DeploymentConfig {
+  d := imageChangeDeploymentConfig()
+  d.Triggers[0].ImageChangeParams.ContainerNames = []string{"container-3"}
+  return d
 }
