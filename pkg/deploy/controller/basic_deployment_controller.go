@@ -14,16 +14,16 @@ import (
 // is to create new replication controllers as defined on a Deployment, and delete any previously existing
 // replication controllers for the same DeploymentConfig associated with the deployment.
 type BasicDeploymentController struct {
-  DeploymentInterface            bdcDeploymentInterface
-  ReplicationControllerInterface bdcReplicationControllerInterface
-  NextDeployment                 func() *deployapi.Deployment
+  DeploymentUpdater           bdcDeploymentUpdater
+  ReplicationControllerClient bdcReplicationControllerClient
+  NextDeployment              func() *deployapi.Deployment
 }
 
-type bdcDeploymentInterface interface {
+type bdcDeploymentUpdater interface {
   UpdateDeployment(ctx kapi.Context, deployment *deployapi.Deployment) (*deployapi.Deployment, error)
 }
 
-type bdcReplicationControllerInterface interface {
+type bdcReplicationControllerClient interface {
   ListReplicationControllers(ctx kapi.Context, selector labels.Selector) (*kapi.ReplicationControllerList, error)
   GetReplicationController(ctx kapi.Context, id string) (*kapi.ReplicationController, error)
   CreateReplicationController(ctx kapi.Context, ctrl *kapi.ReplicationController) (*kapi.ReplicationController, error)
@@ -41,7 +41,7 @@ func (dc *BasicDeploymentController) HandleDeployment() error {
   deployment := dc.NextDeployment()
 
   if deployment.Strategy.Type != deployapi.DeploymentStrategyTypeBasic {
-    glog.V(4).Infof("Dropping deployment %s due to incompatible strategy type %s", deployment.ID, deployment.Strategy)
+    glog.V(4).Infof("Ignoring deployment %s due to incompatible strategy type %s", deployment.ID, deployment.Strategy)
     return nil
   }
 
@@ -57,7 +57,7 @@ func (dc *BasicDeploymentController) HandleDeployment() error {
   if deployment.Status != nextStatus {
     deployment.Status = nextStatus
     glog.V(4).Infof("Saving deployment %v status: %v", deployment.ID, deployment.Status)
-    if _, err := dc.DeploymentInterface.UpdateDeployment(ctx, deployment); err != nil {
+    if _, err := dc.DeploymentUpdater.UpdateDeployment(ctx, deployment); err != nil {
       glog.V(2).Infof("Received error while saving deployment %v: %v", deployment.ID, err)
       return err
     }
@@ -67,13 +67,13 @@ func (dc *BasicDeploymentController) HandleDeployment() error {
 }
 
 func (dc *BasicDeploymentController) handleNew(ctx kapi.Context, deployment *deployapi.Deployment) deployapi.DeploymentStatus {
-  var replicationControllers *kapi.ReplicationControllerList
+  var controllers *kapi.ReplicationControllerList
   var err error
 
   configID, hasConfigID := deployment.Labels[deployapi.DeploymentConfigLabel]
   if hasConfigID {
     selector, _ := labels.ParseSelector(deployapi.DeploymentConfigLabel + "=" + configID)
-    replicationControllers, err = dc.ReplicationControllerInterface.ListReplicationControllers(ctx, selector)
+    controllers, err = dc.ReplicationControllerClient.ListReplicationControllers(ctx, selector)
     if err != nil {
       glog.V(2).Infof("Unable to get list of replication controllers for previous deploymentConfig %s: %v\n", configID, err)
       return deployapi.DeploymentStatusFailed
@@ -93,47 +93,47 @@ func (dc *BasicDeploymentController) handleNew(ctx kapi.Context, deployment *dep
   controller.DesiredState.PodTemplate.Labels["deploymentID"] = deployment.ID
 
   glog.V(2).Infof("Creating replicationController for deployment %s", deployment.ID)
-  if _, err := dc.ReplicationControllerInterface.CreateReplicationController(ctx, controller); err != nil {
+  if _, err := dc.ReplicationControllerClient.CreateReplicationController(ctx, controller); err != nil {
     glog.V(2).Infof("An error occurred creating the replication controller for deployment %s: %v", deployment.ID, err)
     return deployapi.DeploymentStatusFailed
   }
 
-  allReplControllersProcessed := true
+  allProcessed := true
   // For this simple deploy, remove previous replication controllers
-  for _, rc := range replicationControllers.Items {
+  for _, rc := range controllers.Items {
     configID, _ := deployment.Labels[deployapi.DeploymentConfigLabel]
     glog.V(2).Infof("Stopping replication controller for previous deploymentConfig %s: %v", configID, rc.ID)
 
-    replicationController, err := dc.ReplicationControllerInterface.GetReplicationController(ctx, rc.ID)
+    controller, err := dc.ReplicationControllerClient.GetReplicationController(ctx, rc.ID)
     if err != nil {
       glog.V(2).Infof("Unable to get replication controller %s for previous deploymentConfig %s: %#v\n", rc.ID, configID, err)
-      allReplControllersProcessed = false
+      allProcessed = false
       continue
     }
 
-    replicationController.DesiredState.Replicas = 0
+    controller.DesiredState.Replicas = 0
     glog.V(2).Infof("Settings Replicas=0 for replicationController %s for previous deploymentConfig %s", rc.ID, configID)
-    if _, err := dc.ReplicationControllerInterface.UpdateReplicationController(ctx, replicationController); err != nil {
+    if _, err := dc.ReplicationControllerClient.UpdateReplicationController(ctx, controller); err != nil {
       glog.V(2).Infof("Unable to stop replication controller %s for previous deploymentConfig %s: %#v\n", rc.ID, configID, err)
-      allReplControllersProcessed = false
+      allProcessed = false
       continue
     }
   }
 
-  for _, rc := range replicationControllers.Items {
+  for _, rc := range controllers.Items {
     configID, _ := deployment.Labels[deployapi.DeploymentConfigLabel]
     glog.V(2).Infof("Deleting replication controller %s for previous deploymentConfig %s", rc.ID, configID)
-    err := dc.ReplicationControllerInterface.DeleteReplicationController(ctx, rc.ID)
+    err := dc.ReplicationControllerClient.DeleteReplicationController(ctx, rc.ID)
     if err != nil {
       glog.V(2).Infof("Unable to remove replication controller %s for previous deploymentConfig %s:%#v\n", rc.ID, configID, err)
-      allReplControllersProcessed = false
+      allProcessed = false
       continue
     }
   }
 
-  if allReplControllersProcessed {
+  if allProcessed {
     return deployapi.DeploymentStatusComplete
-  } else {
-    return deployapi.DeploymentStatusFailed
   }
+
+  return deployapi.DeploymentStatusFailed
 }
