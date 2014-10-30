@@ -82,12 +82,20 @@ func (g *DeploymentConfigGenerator) Generate(deploymentConfigID string) (*deploy
 		if deploymentConfig.LatestVersion == 0 {
 			// If the latest version is zero, and the generation's being called, bump it.
 			deploymentConfig.LatestVersion = 1
+			defaultTriggerDetails(deploymentConfig)
 		}
 	} else if !deployutil.PodTemplatesEqual(configPodTemplate, deployment.ControllerTemplate.PodTemplate) {
 		deploymentConfig.LatestVersion += 1
+		defaultTriggerDetails(deploymentConfig)
 	}
 
 	return deploymentConfig, nil
+}
+
+func defaultTriggerDetails(config *deployapi.DeploymentConfig) {
+	config.TriggerDetails = deployapi.DeploymentTriggerDetails{
+		Type: deployapi.DeploymentTriggerManual,
+	}
 }
 
 func updateContainers(template *kapi.PodTemplate, containers util.StringSet, newImage string) {
