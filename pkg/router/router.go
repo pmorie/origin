@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"strconv"
 	"time"
+	"strings"
 )
 
 const (
@@ -67,7 +68,7 @@ type Router interface {
 	DeleteFrontend(name string)
 	AddAlias(alias, frontendName string)
 	RemoveAlias(alias, frontendName string)
-	AddRoute(frontendName, frontendPath, backendPath string, protocols []string, endpoints []Endpoint)
+	AddRoute(frontend *Frontend, backend *Backend, endpoints []Endpoint)
 	WriteConfig()
 	ReloadRouter() bool
 }
@@ -159,9 +160,9 @@ func (routes *Routes) RemoveAlias(alias, frontendName string) {
 	routes.WriteRoutes()
 }
 
-func (routes *Routes) AddRoute(frontendName, frontendPath, backendPath string, protocols []string, endpoints []Endpoint) {
+func (routes *Routes) AddRoute(frontend *Frontend, backend *Backend, endpoints []Endpoint) {
 	var id string
-	a := routes.GlobalRoutes[frontendName]
+	a := routes.GlobalRoutes[frontend.Name]
 
 	epIDs := make([]string, 1)
 	for newEpId := range endpoints {
@@ -187,7 +188,7 @@ func (routes *Routes) AddRoute(frontendName, frontendPath, backendPath string, p
 	// locate a backend that may already exist with this protocol and fe/be path
 	found := false
 	for _, be := range a.Backends {
-		if be.FePath == frontendPath && be.BePath == backendPath && cmpStrSlices(protocols, be.Protocols) {
+		if be.FePath == backend.FePath && be.BePath == backend.BePath && cmpStrSlices(backend.Protocols, be.Protocols) {
 			for _, epId := range epIDs {
 				be.EndpointIDs = append(be.EndpointIDs, epId)
 			}
@@ -198,7 +199,7 @@ func (routes *Routes) AddRoute(frontendName, frontendPath, backendPath string, p
 	}
 	if !found {
 		id = makeID()
-		a.Backends[id] = Backend{id, frontendPath, backendPath, protocols, epIDs, TERM_EDGE, nil}
+		a.Backends[id] = Backend{id, backend.FePath, backend.BePath, backend.Protocols, epIDs, TERM_EDGE, nil}
 	}
 	routes.GlobalRoutes[a.Name] = a
 	routes.WriteRoutes()
@@ -221,4 +222,25 @@ func cmpStrSlices(first []string, second []string) bool {
 		}
 	}
 	return true
+}
+
+//parse the string into host/port and create an endpoint from it.
+//if the string is empty then nil, false will be returned
+func EndpointFromString(s string) (ep *Endpoint, ok bool){
+	if len(s) == 0 {
+		return nil, false
+	}
+
+	ep = &Endpoint{}
+	//not using net.url here because it doesn't split the port out when parsing
+	if strings.Contains(s, ":") {
+		eArr := strings.Split(s, ":")
+		ep.IP = eArr[0]
+		ep.Port = eArr[1]
+	}else{
+		ep.IP = s
+		ep.Port = "80"
+	}
+
+	return ep, true
 }

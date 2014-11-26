@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"strings"
 	"sync"
 
 	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
@@ -87,21 +86,26 @@ func (c *RouterController) HandleEndpoints() {
 		routerEndpoints := make([]router.Endpoint, len(endpoints.Endpoints))
 
 		for i, e := range endpoints.Endpoints {
-			ep := router.Endpoint{}
-			if strings.Contains(e, ":") {
-				eArr := strings.Split(e, ":")
-				ep.IP = eArr[0]
-				ep.Port = eArr[1]
-			} else if e == "" {
+			ep, ok := router.EndpointFromString(e)
+
+			if !ok {
+				glog.Warningf("Unable to convert %s to endpoint", e)
 				continue
-			} else {
-				ep.IP = e
-				ep.Port = "80"
 			}
-			routerEndpoints[i] = ep
+			routerEndpoints[i] = *ep
 		}
 
-		c.Router.AddRoute(key, "", "", nil, routerEndpoints)
+		frontend := &router.Frontend{
+			Name: endpoints.Name,
+		}
+
+		backend := &router.Backend{
+			FePath: "",
+			BePath: "",
+			Protocols: nil,
+		}
+
+		c.Router.AddRoute(frontend, backend, routerEndpoints)
 	}
 
 	c.Router.WriteConfig()
