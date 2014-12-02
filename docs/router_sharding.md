@@ -125,10 +125,10 @@ The `RouteScheduler` processes `Route` resources as follows:
 1.  The `RouteScheduler` watches for newly created (and thus unscheduled) `Route`s and
     periodically list the unscheduled `Route`s to retry
 2.  The scheduler passes unscheduled `Route` records to the `RouteSchedulerStrategy` interface
-3.  The scheduler creates a `RouteBinding` for the  route and router if the route binding is
-    successful
-4.  The `RouteBinding` REST API applies the route binding to the `Route`'s status field, setting the
-    `DNS` and `Phase` fields
+3.  If the scheduling strategy is able to schedule the route, the scheduler creates a
+    `RouteBinding` for the route and router by calling the `RouteBinding` REST API
+4.  The `RouteBinding` REST API `Create` call applies the route binding to the `Route`'s status
+    field, setting the `DNS` and `Phase` fields
 5.  The `Router` instance the `Route` is scheduled to receives an update event for the route
     and applies it to the router backend configuration
 
