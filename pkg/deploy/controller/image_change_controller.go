@@ -65,7 +65,12 @@ func (c *ImageChangeController) HandleImageRepo() {
 				}
 
 				// The container image's tag name is by convention the same as the image ID it references
-				_, _, _, containerImageID, _ := imageapi.SplitDockerPullSpec(container.Image)
+				_, _, _, containerImageID, err := imageapi.SplitDockerPullSpec(container.Image)
+				if err != nil {
+					glog.V(4).Infof("Skipping container %s; container's image is invalid: %v", container.Name, err)
+					continue
+				}
+
 				if repoImageID, repoHasTag := imageRepo.Tags[params.Tag]; repoHasTag && repoImageID != containerImageID {
 					configsToGenerate = append(configsToGenerate, config)
 					firedTriggersForConfig[config.Name] = append(firedTriggersForConfig[config.Name], params)
