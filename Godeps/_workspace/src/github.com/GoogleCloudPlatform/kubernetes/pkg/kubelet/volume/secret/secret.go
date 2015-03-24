@@ -93,7 +93,7 @@ var wrappedVolumeSpec = &api.Volume{
 }
 
 func (sv *secretVolume) SetUpAt(dir string) error {
-	glog.V(3).Infof("Setting up volume %v for pod %v at %v", sv.volName, sv.podRef.UID, dir)
+	glog.V(3).Infof("Setting up volume %v for pod %v at %v; creating tmpfs storage", sv.volName, sv.podRef.UID, dir)
 
 	// Wrap EmptyDir, let it do the setup.
 	wrapped, err := sv.plugin.host.NewWrapperBuilder(wrappedVolumeSpec, &sv.podRef)
@@ -111,12 +111,20 @@ func (sv *secretVolume) SetUpAt(dir string) error {
 
 	secret, err := kubeClient.Secrets(sv.podRef.Namespace).Get(sv.secretRef.Name)
 	if err != nil {
-		glog.Errorf("Couldn't get secret %v/%v", sv.secretRef.Namespace, sv.secretRef.Name)
+		glog.Errorf("Couldn't get secret %v/%v", sv.podRef.Namespace, sv.secretRef.Name)
 		return err
+	} else {
+		totalBytes := totalSecretBytes(secret)
+		glog.V(3).Infof("Received secret %v/%v containing (%v) pieces of data, %v total bytes",
+			sv.podRef.Namespace,
+			sv.secretRef.Name,
+			len(secret.Data),
+			totalBytes)
 	}
 
 	for name, data := range secret.Data {
 		hostFilePath := path.Join(dir, name)
+		glog.V(3).Infof("Writing secret data %v/%v/%v (%v bytes) to host file %v", sv.podRef.Namespace, sv.secretRef.Name, name, len(data), hostFilePath)
 		err := ioutil.WriteFile(hostFilePath, data, 0777)
 		if err != nil {
 			glog.Errorf("Error writing secret data to host path: %v, %v", hostFilePath, err)
@@ -125,6 +133,15 @@ func (sv *secretVolume) SetUpAt(dir string) error {
 	}
 
 	return nil
+}
+
+func totalSecretBytes(secret *api.Secret) int {
+	totalSize := 0
+	for _, bytes := range secret.Data {
+		totalSize += len(bytes)
+	}
+
+	return totalSize
 }
 
 func (sv *secretVolume) GetPath() string {
