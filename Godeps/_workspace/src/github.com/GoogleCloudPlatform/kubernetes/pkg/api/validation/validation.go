@@ -168,6 +168,14 @@ func ValidateEndpointsName(name string, prefix bool) (bool, string) {
 	return nameIsDNSSubdomain(name, prefix)
 }
 
+// ValidateSecurityContextConstraintsName can be used to check whether the given
+// security context constraint name is valid.
+// Prefix indicates this name will be used as part of generation, in which case
+// trailing dashes are allowed.
+func ValidateSecurityContextConstraintsName(name string, prefix bool) (bool, string) {
+	return nameIsDNSSubdomain(name, prefix)
+}
+
 // nameIsDNSSubdomain is a ValidateNameFunc for names that must be a DNS subdomain.
 func nameIsDNSSubdomain(name string, prefix bool) (bool, string) {
 	if prefix {
@@ -1645,5 +1653,18 @@ func ValidateSecurityContext(sc *api.SecurityContext) errs.ValidationErrorList {
 			allErrs = append(allErrs, errs.NewFieldInvalid("runAsUser", *sc.RunAsUser, "runAsUser cannot be negative"))
 		}
 	}
+	return allErrs
+}
+
+func ValidateSecurityContextConstraints(scc *api.SecurityContextConstraints) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	allErrs = append(allErrs, ValidateObjectMeta(&scc.ObjectMeta, false, ValidateSecurityContextConstraintsName).Prefix("metadata")...)
+	return allErrs
+}
+
+func ValidateSecurityContextConstraintsUpdate(old *api.SecurityContextConstraints, new *api.SecurityContextConstraints) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+	allErrs = append(allErrs, ValidateObjectMetaUpdate(&old.ObjectMeta, &new.ObjectMeta).Prefix("metadata")...)
+	allErrs = append(allErrs, ValidateSecurityContextConstraints(new)...)
 	return allErrs
 }
