@@ -9,6 +9,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/securitycontextconstraints"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/serviceaccount"
 )
 
 func init() {
@@ -65,7 +66,9 @@ func (c *constraint) Admit(a kadmission.Attributes) error {
 			constraint.RunAsUser.UID = &uid
 		}
 
-		if constraint.SELinuxContext.Type == kapi.SELinuxStrategyMustRunAs && constraint.SELinuxContext.SELinuxOptions.Level == "" {
+		if constraint.SELinuxContext.Type == kapi.SELinuxStrategyMustRunAs &&
+			constraint.SELinuxContext.SELinuxOptions != nil &&
+			constraint.SELinuxContext.SELinuxOptions.Level == "" {
 			level, err := getPreallocatedLevel(constraint)
 			if err != nil {
 				return err
@@ -133,6 +136,8 @@ func getPreallocatedLevel(constraint api.SecurityContextConstraint) (string, err
 	return "s0", nil
 }
 
+type empty struct{}
+
 func getMatchingSecurityContextConstraints(client client.Interface, ns string, pod *kapi.Pod) ([]kapi.SecurityContextConstraint, error) {
 	serviceAccountName := pod.Spec.serviceAccount
 	if serviceAccountName == "" {
@@ -149,29 +154,29 @@ func getMatchingSecurityContextConstraints(client client.Interface, ns string, p
 		return nil, err
 	}
 
-	userInfo := UserInfo(ns, serviceAccountName, string(serviceAccount.UID))
-
-	matchedConstraints := make([]api.SecurityContextConstraint)
+	userInfo := serviceaccount.UserInfo(ns, serviceAccountName, string(serviceAccount.UID))
+	matchedConstraints := make(map[api.SecurityContextConstraint]empty)
 
 	for _, constraint := range constraints.Items {
 		for _, group := range constraint.Groups {
 			if userInfo.Group == group {
-				matchedConstraints = append(matchedConstraints, constraint)
+				matchedConstraints[matchedConstraints] = empty{}
 				break
 			}
 		}
 
 		for _, user := range constraint.Users {
 			if userInfo.User == user {
-				matchedConstraints = append(matchedConstraints, constraint)
+				matchedConstraints[constraint] == empty{}
 				break
 			}
 		}
 	}
 
-	return matchedConstraints, nil
-}
+	result := make([]api.SecurityContextConstraint)
+	for constraint, _ := range matchedConstraints {
+		result = append(result, constraint)
+	}
 
-func UserInfo(namespace, name, uid string) user.Info {
-	return &user.DefaultInfo{}
+	return result, nil
 }
