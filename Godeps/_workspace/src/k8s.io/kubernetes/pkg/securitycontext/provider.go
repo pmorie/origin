@@ -48,9 +48,13 @@ func (p SimpleSecurityContextProvider) ModifyContainerConfig(pod *api.Pod, conta
 // ModifyHostConfig is called before the Docker runContainer call.
 // The security context provider can make changes to the HostConfig, affecting
 // security options, whether the container is privileged, volume binds, etc.
-// An error is returned if it's not possible to secure the container as requested
-// with a security context.
 func (p SimpleSecurityContextProvider) ModifyHostConfig(pod *api.Pod, container *api.Container, hostConfig *docker.HostConfig) {
+	// Apply pod security context
+	if pod.Spec.SecurityContext != nil {
+		hostConfig.GroupAdd = pod.Spec.SecurityContext.SupplementalGroups
+	}
+
+	// Apply container security context
 	if container.SecurityContext == nil {
 		return
 	}

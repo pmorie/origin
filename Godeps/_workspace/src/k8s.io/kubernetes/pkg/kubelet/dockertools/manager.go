@@ -745,7 +745,10 @@ func (dm *DockerManager) runContainer(
 	if len(opts.CgroupParent) > 0 {
 		hc.CgroupParent = opts.CgroupParent
 	}
-	securityContextProvider.ModifyHostConfig(pod, container, hc)
+
+	if container.Name != PodInfraContainerName {
+		securityContextProvider.ModifyHostConfig(pod, container, hc)
+	}
 
 	if err = dm.client.StartContainer(dockerContainer.ID, hc); err != nil {
 		if ref != nil {

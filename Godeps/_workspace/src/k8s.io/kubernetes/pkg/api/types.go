@@ -1002,9 +1002,10 @@ type PodSecurityContext struct {
 	// Optional: Default to false.
 	HostIPC bool `json:"hostIPC,omitempty"`
 
-	// SupplementalGroups can be used to specify a list of groups
-	// which the main container process will run as. This will be
-	// applied to all containers in the pod.
+	// SupplementalGroups can be used to specify a list of
+	// additional groups which the main container process will run
+	// as. This will be applied to all containers in the pod in
+	// addition to the primary group of the cotainer.
 	SupplementalGroups []string `json:"supplementalGroups,omitempty"`
 }
 
