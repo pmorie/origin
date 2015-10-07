@@ -942,7 +942,8 @@ func (PodProxyOptions) SwaggerDoc() map[string]string {
 }
 
 var map_PodSecurityContext = map[string]string{
-	"": "PodSecurityContext holds pod-level security attributes and common container settings.",
+	"":                   "PodSecurityContext holds pod-level security attributes and common container settings.",
+	"supplementalGroups": "SupplementalGroups can be used to specify a list of groups which the main container process will run as. This will be applied to all containers in the pod.",
 }
 
 func (PodSecurityContext) SwaggerDoc() map[string]string {
