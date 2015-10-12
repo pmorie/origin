@@ -424,7 +424,7 @@ func deepCopy_api_PodSecurityContext(in api.PodSecurityContext, out *api.PodSecu
 	out.HostPID = in.HostPID
 	out.HostIPC = in.HostIPC
 	if in.SupplementalGroups != nil {
-		out.SupplementalGroups = make([]string, len(in.SupplementalGroups))
+		out.SupplementalGroups = make([]int, len(in.SupplementalGroups))
 		for i := range in.SupplementalGroups {
 			out.SupplementalGroups[i] = in.SupplementalGroups[i]
 		}

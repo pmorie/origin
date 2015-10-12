@@ -84,7 +84,7 @@ func TestPodSecurityContextAdmission(t *testing.T) {
 		},
 		{
 			securityContext: api.PodSecurityContext{
-				SupplementalGroups: []string{"test"},
+				SupplementalGroups: []int{1234},
 			},
 			errorExpected: true,
 		},

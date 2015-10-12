@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"testing"
 
-	"k8s.io/kubernetes/pkg/api"
-
 	docker "github.com/fsouza/go-dockerclient"
+	"k8s.io/kubernetes/pkg/api"
+	apitesting "k8s.io/kubernetes/pkg/api/testing"
 )
 
 func TestModifyContainerConfig(t *testing.T) {
@@ -108,7 +108,7 @@ func TestModifyHostConfig(t *testing.T) {
 	provider := NewSimpleSecurityContextProvider()
 	dummyContainer := &api.Container{}
 	dummyPod := &api.Pod{
-		Spec: api.PodSpec{},
+		Spec: apitesting.DeepEqualSafePodSpec(),
 	}
 	for k, v := range testCases {
 		dummyContainer.SecurityContext = v.securityContext
@@ -123,7 +123,7 @@ func TestModifyHostConfig(t *testing.T) {
 func TestModifyHostConfigPodSecurityContext(t *testing.T) {
 
 	supplementalGroupsSC := &api.PodSecurityContext{}
-	supplementalGroupsSC.SupplementalGroups = []string{"2222"}
+	supplementalGroupsSC.SupplementalGroups = []int{2222}
 	supplementalGroupHC := fullValidHostConfig()
 	supplementalGroupHC.GroupAdd = []string{"2222"}
 
@@ -145,7 +145,7 @@ func TestModifyHostConfigPodSecurityContext(t *testing.T) {
 	dummyContainer := &api.Container{}
 	dummyContainer.SecurityContext = fullValidSecurityContext()
 	dummyPod := &api.Pod{
-		Spec: api.PodSpec{},
+		Spec: apitesting.DeepEqualSafePodSpec(),
 	}
 
 	for k, v := range testCases {

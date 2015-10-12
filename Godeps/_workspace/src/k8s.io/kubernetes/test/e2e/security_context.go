@@ -23,6 +23,8 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
+
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/util"
 
@@ -57,9 +59,9 @@ var _ = Describe("[Skipped] Security Context", func() {
 	It("should support pod.Spec.SecurityContext.SupplementalGroups", func() {
 		pod := getSecurityContextTestPod()
 		pod.Spec.Containers[0].Command = []string{"id", "-G"}
-		groups := []string{"1234", "5678"}
+		groups := []int{1234, 5678}
 		pod.Spec.SecurityContext.SupplementalGroups = groups
-		framework.TestContainerOutput("pod.Spec.SecurityContext.SupplementalGroups", pod, 0, groups)
+		framework.TestContainerOutput("pod.Spec.SecurityContext.SupplementalGroups", pod, 0, []string{fmt.Sprintf("%v %v", groups[0], groups[1])})
 	})
 
 })

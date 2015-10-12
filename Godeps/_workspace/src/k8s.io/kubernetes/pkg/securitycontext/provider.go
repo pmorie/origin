@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/kubelet/leaky"
 
 	docker "github.com/fsouza/go-dockerclient"
 )
@@ -51,7 +52,12 @@ func (p SimpleSecurityContextProvider) ModifyContainerConfig(pod *api.Pod, conta
 func (p SimpleSecurityContextProvider) ModifyHostConfig(pod *api.Pod, container *api.Container, hostConfig *docker.HostConfig) {
 	// Apply pod security context
 	if pod.Spec.SecurityContext != nil {
-		hostConfig.GroupAdd = pod.Spec.SecurityContext.SupplementalGroups
+		if pod.Spec.SecurityContext.SupplementalGroups != nil && container.Name != leaky.PodInfraContainerName {
+			hostConfig.GroupAdd = make([]string, len(pod.Spec.SecurityContext.SupplementalGroups))
+			for i, group := range pod.Spec.SecurityContext.SupplementalGroups {
+				hostConfig.GroupAdd[i] = strconv.Itoa(group)
+			}
+		}
 	}
 
 	// Apply container security context
