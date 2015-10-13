@@ -2369,9 +2369,9 @@ type SupplementalGroupsStrategyOptions struct {
 // TODO: this could be reused for UIDs.
 type IDRange struct {
 	// Min is the start of the range, inclusive.
-	Min int64
+	Min int
 	// Max is the end of the range, inclusive.
-	Max int64
+	Max int
 }
 
 // SELinuxContextStrategyType denotes strategy types for generating SELinux options for a
@@ -2413,7 +2413,7 @@ const (
 	// container must run as a particular gid.
 	SupplementalGroupsStrategyMustRunAs SupplementalGroupsStrategyType = "MustRunAs"
 	// container may make requests for any gid.
-	SupplementalGroupsrStrategyRunAsAny SupplementalGroupsStrategyType = "RunAsAny"
+	SupplementalGroupsStrategyRunAsAny SupplementalGroupsStrategyType = "RunAsAny"
 )
 
 // SecurityContextConstraintsList is a list of SecurityContextConstraints objects
