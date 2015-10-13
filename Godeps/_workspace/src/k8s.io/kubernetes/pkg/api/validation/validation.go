@@ -2060,7 +2060,46 @@ func ValidateSecurityContextConstraints(scc *api.SecurityContextConstraints) err
 		//good types
 	default:
 		msg := fmt.Sprintf("invalid strategy type.  Valid values are %s, %s", api.SELinuxStrategyMustRunAs, api.SELinuxStrategyRunAsAny)
-		allErrs = append(allErrs, errs.NewFieldInvalid("seLinuxContext.type", scc.RunAsUser.Type, msg))
+		allErrs = append(allErrs, errs.NewFieldInvalid("seLinuxContext.type", scc.SELinuxContext.Type, msg))
+	}
+
+	// ensure the fsgroup strat has a valid type
+	switch scc.FSGroup.Type {
+	case api.FSGroupStrategyMustRunAs, api.FSGroupStrategyRunAsAny:
+		//good types
+	default:
+		msg := fmt.Sprintf("invalid strategy type.  Valid values are %s, %s", api.FSGroupStrategyMustRunAs, api.FSGroupStrategyRunAsAny)
+		allErrs = append(allErrs, errs.NewFieldInvalid("fsGroup.type", scc.FSGroup.Type, msg))
+	}
+	allErrs = append(allErrs, validateIDRanges(scc.FSGroup.Ranges).Prefix("fsGroup.ranges")...)
+
+	switch scc.SupplementalGroups.Type {
+	case api.SupplementalGroupsStrategyMustRunAs, api.SupplementalGroupsStrategyRunAsAny:
+	//good types
+	default:
+		msg := fmt.Sprintf("invalid strategy type.  Valid values are %s, %s", api.SupplementalGroupsStrategyMustRunAs, api.SupplementalGroupsStrategyRunAsAny)
+		allErrs = append(allErrs, errs.NewFieldInvalid("supplementalGroups.type", scc.SupplementalGroups.Type, msg))
+	}
+	allErrs = append(allErrs, validateIDRanges(scc.SupplementalGroups.Ranges).Prefix("supplementalGroups")...)
+
+	return allErrs
+}
+
+// validateIDRanges ensures the range is valid.
+func validateIDRanges(rng []api.IDRange) errs.ValidationErrorList {
+	allErrs := errs.ValidationErrorList{}
+
+	for i, r := range rng {
+		// if 0 <= Min <= Max then we do not need to validate max.  It is always greater than or
+		// equal to 0 and Min.
+		if r.Min > r.Max {
+			field := fmt.Sprintf("ranges[%d].min", i)
+			allErrs = append(allErrs, errs.NewFieldInvalid(field, r, "min cannot be greater than max"))
+		}
+		if r.Min < 0 {
+			field := fmt.Sprintf("ranges[%d].min", i)
+			allErrs = append(allErrs, errs.NewFieldInvalid(field, r.Min, "min cannot be negative"))
+		}
 	}
 
 	return allErrs

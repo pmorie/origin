@@ -165,6 +165,8 @@ func assignSecurityContext(provider scc.SecurityContextConstraintsProvider, pod 
 	errs := fielderrors.ValidationErrorList{}
 
 	for i, c := range pod.Spec.Containers {
+		// TODO call method for determining effective CSC and use that on the container to gen/val
+
 		sc, err := provider.CreateSecurityContext(pod, &c)
 		if err != nil {
 			errs = append(errs, fielderrors.NewFieldInvalid(fmt.Sprintf("spec.containers[%d].securityContext", i), "", err.Error()))
