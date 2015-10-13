@@ -13061,6 +13061,11 @@
        "$ref": "integer"
       },
       "description": "SupplementalGroups can be used to specify a list of additional groups which the main container process will run as. This will be applied to all containers in the pod in addition to the primary group of the cotainer."
+     },
+     "fsGroup": {
+      "type": "integer",
+      "format": "int64",
+      "description": "FSGroup is a special supplemental group that all containers in a pod run as.  If FSGroup is set, the kubelet will make the volumes the pod has exclusive ownership of owned by this group and set the setgid bit on the volume directory so that new files created in the volume are also owned by the FS group.  If FSGroup is not set, the kubelet will not change the ownership of any volumes."
      }
     }
    },

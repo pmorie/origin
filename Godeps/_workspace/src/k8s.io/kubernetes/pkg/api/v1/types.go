@@ -1257,6 +1257,14 @@ type PodSecurityContext struct {
 	// as. This will be applied to all containers in the pod in
 	// addition to the primary group of the cotainer.
 	SupplementalGroups []int `json:"supplementalGroups,omitempty"`
+
+	// FSGroup is a special supplemental group that all containers in a pod
+	// run as.  If FSGroup is set, the kubelet will make the volumes the pod
+	// has exclusive ownership of owned by this group and set the setgid bit
+	// on the volume directory so that new files created in the volume are
+	// also owned by the FS group.  If FSGroup is not set, the kubelet will not
+	// change the ownership of any volumes.
+	FSGroup *int `json:"fsGroup,omitempty"`
 }
 
 // PodStatus represents information about the status of a pod. Status may trail the actual

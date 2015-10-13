@@ -944,6 +944,7 @@ func (PodProxyOptions) SwaggerDoc() map[string]string {
 var map_PodSecurityContext = map[string]string{
 	"":                   "PodSecurityContext holds pod-level security attributes and common container settings.",
 	"supplementalGroups": "SupplementalGroups can be used to specify a list of additional groups which the main container process will run as. This will be applied to all containers in the pod in addition to the primary group of the cotainer.",
+	"fsGroup":        "FSGroup is a special supplemental group that all containers in a pod run as.  If FSGroup is set, the kubelet will make the volumes the pod has exclusive ownership of owned by this group and set the setgid bit on the volume directory so that new files created in the volume are also owned by the FS group.  If FSGroup is not set, the kubelet will not change the ownership of any volumes.",
 }
 
 func (PodSecurityContext) SwaggerDoc() map[string]string {
