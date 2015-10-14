@@ -31,8 +31,9 @@ func TestAdmit(t *testing.T) {
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "default",
 			Annotations: map[string]string{
-				allocator.UIDRangeAnnotation: "1/3",
-				allocator.MCSAnnotation:      "s0:c1,c0",
+				allocator.UIDRangeAnnotation:           "1/3",
+				allocator.MCSAnnotation:                "s0:c1,c0",
+				allocator.SupplementalGroupsAnnotation: "2/3",
 			},
 		},
 	}
@@ -55,6 +56,12 @@ func TestAdmit(t *testing.T) {
 		SELinuxContext: kapi.SELinuxContextStrategyOptions{
 			Type: kapi.SELinuxStrategyMustRunAs,
 		},
+		FSGroup: kapi.FSGroupStrategyOptions{
+			Type: kapi.FSGroupStrategyMustRunAs,
+		},
+		SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+			Type: kapi.SupplementalGroupsStrategyMustRunAs,
+		},
 		Groups: []string{"system:serviceaccounts"},
 	}
 	// create scc that has specific requirements that shouldn't match but is permissioned to
@@ -74,6 +81,18 @@ func TestAdmit(t *testing.T) {
 				Level: "s9:z0,z1",
 			},
 		},
+		FSGroup: kapi.FSGroupStrategyOptions{
+			Type: kapi.FSGroupStrategyMustRunAs,
+			Ranges: []kapi.IDRange{
+				{Min: 999, Max: 999},
+			},
+		},
+		SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+			Type: kapi.SupplementalGroupsStrategyMustRunAs,
+			Ranges: []kapi.IDRange{
+				{Min: 999, Max: 999},
+			},
+		},
 		Groups: []string{"system:serviceaccounts"},
 	}
 	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
@@ -91,7 +110,7 @@ func TestAdmit(t *testing.T) {
 		return &kapi.Pod{
 			Spec: kapi.PodSpec{
 				ServiceAccountName: "default",
-				SecurityContext: &kapi.PodSecurityContext{},
+				SecurityContext:    &kapi.PodSecurityContext{},
 				Containers: []kapi.Container{
 					{
 						SecurityContext: &kapi.SecurityContext{},
@@ -136,6 +155,13 @@ func TestAdmit(t *testing.T) {
 
 	requestsHostPorts := goodPod()
 	requestsHostPorts.Spec.Containers[0].Ports = []kapi.ContainerPort{{HostPort: 1}}
+
+	requestsSupplementalGroup := goodPod()
+	requestsSupplementalGroup.Spec.SecurityContext.SupplementalGroups = []int{1}
+
+	requestsFSGroup := goodPod()
+	fsGroup := 1
+	requestsFSGroup.Spec.SecurityContext.FSGroup = &fsGroup
 
 	testCases := map[string]struct {
 		pod           *kapi.Pod
@@ -182,6 +208,14 @@ func TestAdmit(t *testing.T) {
 		},
 		"requestsHostIPC": {
 			pod:         requestsHostIPC,
+			shouldAdmit: false,
+		},
+		"requestsSupplementalGroup": {
+			pod:         requestsSupplementalGroup,
+			shouldAdmit: false,
+		},
+		"requestsFSGroup": {
+			pod:         requestsFSGroup,
 			shouldAdmit: false,
 		},
 	}
@@ -231,6 +265,12 @@ func TestAdmit(t *testing.T) {
 		SELinuxContext: kapi.SELinuxContextStrategyOptions{
 			Type: kapi.SELinuxStrategyRunAsAny,
 		},
+		FSGroup: kapi.FSGroupStrategyOptions{
+			Type: kapi.FSGroupStrategyRunAsAny,
+		},
+		SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+			Type: kapi.SupplementalGroupsStrategyRunAsAny,
+		},
 		Groups: []string{"system:serviceaccounts"},
 	}
 	store.Add(adminSCC)
@@ -257,6 +297,7 @@ func TestAssignSecurityContext(t *testing.T) {
 	// set up test data
 	// scc that will deny privileged container requests and has a default value for a field (uid)
 	var uid int64 = 9999
+	fsGroup := 1
 	scc := &kapi.SecurityContextConstraints{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "test scc",
@@ -267,6 +308,17 @@ func TestAssignSecurityContext(t *testing.T) {
 		RunAsUser: kapi.RunAsUserStrategyOptions{
 			Type: kapi.RunAsUserStrategyMustRunAs,
 			UID:  &uid,
+		},
+
+		// require allocation for a field in the psc as well to test changes/no changes
+		FSGroup: kapi.FSGroupStrategyOptions{
+			Type: kapi.FSGroupStrategyMustRunAs,
+			Ranges: []kapi.IDRange{
+				{Min: fsGroup, Max: fsGroup},
+			},
+		},
+		SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+			Type: kapi.SupplementalGroupsStrategyRunAsAny,
 		},
 	}
 	provider, err := kscc.NewSimpleProvider(scc)
@@ -330,16 +382,20 @@ func TestAssignSecurityContext(t *testing.T) {
 		}
 
 		// if we shouldn't have validated ensure that uid is not set on the containers
+		// and ensure the psc does not have fsgroup set
 		if !v.shouldValidate {
 			for _, c := range v.pod.Spec.Containers {
 				if c.SecurityContext.RunAsUser != nil {
-					t.Errorf("%s had non-nil UID %d.  UID should not be set on test cases that dont' validate", k, *c.SecurityContext.RunAsUser)
+					t.Errorf("%s had non-nil UID %d.  UID should not be set on test cases that don't validate", k, *c.SecurityContext.RunAsUser)
 				}
 			}
 		}
 
 		// if we validated then the pod sc should be updated now with the defaults from the SCC
 		if v.shouldValidate {
+			if *v.pod.Spec.SecurityContext.FSGroup != fsGroup {
+				t.Errorf("%s expected fsgroup to be defaulted but found %v", k, v.pod.Spec.SecurityContext.FSGroup)
+			}
 			for _, c := range v.pod.Spec.Containers {
 				if *c.SecurityContext.RunAsUser != uid {
 					t.Errorf("%s expected uid to be defaulted to %d but found %v", k, uid, c.SecurityContext.RunAsUser)
@@ -354,8 +410,9 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "default",
 			Annotations: map[string]string{
-				allocator.UIDRangeAnnotation: "1/3",
-				allocator.MCSAnnotation:      "s0:c1,c0",
+				allocator.UIDRangeAnnotation:           "1/3",
+				allocator.MCSAnnotation:                "s0:c1,c0",
+				allocator.SupplementalGroupsAnnotation: "1/3",
 			},
 		},
 	}
@@ -363,7 +420,8 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "default",
 			Annotations: map[string]string{
-				allocator.MCSAnnotation: "s0:c1,c0",
+				allocator.MCSAnnotation:                "s0:c1,c0",
+				allocator.SupplementalGroupsAnnotation: "1/3",
 			},
 		},
 	}
@@ -371,7 +429,29 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "default",
 			Annotations: map[string]string{
+				allocator.UIDRangeAnnotation:           "1/3",
+				allocator.SupplementalGroupsAnnotation: "1/3",
+			},
+		},
+	}
+
+	namespaceNoSupplementalGroupsFallbackToUID := &kapi.Namespace{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: "default",
+			Annotations: map[string]string{
 				allocator.UIDRangeAnnotation: "1/3",
+				allocator.MCSAnnotation:      "s0:c1,c0",
+			},
+		},
+	}
+
+	namespaceBadSupGroups := &kapi.Namespace{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: "default",
+			Annotations: map[string]string{
+				allocator.UIDRangeAnnotation:           "1/3",
+				allocator.MCSAnnotation:                "s0:c1,c0",
+				allocator.SupplementalGroupsAnnotation: "",
 			},
 		},
 	}
@@ -394,6 +474,12 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 					RunAsUser: kapi.RunAsUserStrategyOptions{
 						Type: kapi.RunAsUserStrategyRunAsAny,
 					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyRunAsAny,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyRunAsAny,
+					},
 				}
 			},
 			namespace: namespaceValid,
@@ -411,6 +497,12 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 					RunAsUser: kapi.RunAsUserStrategyOptions{
 						Type: kapi.RunAsUserStrategyMustRunAsRange,
 					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyMustRunAs,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyMustRunAs,
+					},
 				}
 			},
 			namespace: namespaceValid,
@@ -426,6 +518,12 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 					},
 					RunAsUser: kapi.RunAsUserStrategyOptions{
 						Type: kapi.RunAsUserStrategyMustRunAsRange,
+					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyRunAsAny,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyRunAsAny,
 					},
 				}
 			},
@@ -444,10 +542,61 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 					RunAsUser: kapi.RunAsUserStrategyOptions{
 						Type: kapi.RunAsUserStrategyMustRunAsRange,
 					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyRunAsAny,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyRunAsAny,
+					},
 				}
 			},
 			namespace:   namespaceNoMCS,
 			expectedErr: "unable to find pre-allocated mcs annotation",
+		},
+		"pre-allocated group falls back to UID annotation": {
+			scc: func() *kapi.SecurityContextConstraints {
+				return &kapi.SecurityContextConstraints{
+					ObjectMeta: kapi.ObjectMeta{
+						Name: "pre-allocated no sup group annotation",
+					},
+					SELinuxContext: kapi.SELinuxContextStrategyOptions{
+						Type: kapi.SELinuxStrategyRunAsAny,
+					},
+					RunAsUser: kapi.RunAsUserStrategyOptions{
+						Type: kapi.RunAsUserStrategyRunAsAny,
+					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyMustRunAs,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyMustRunAs,
+					},
+				}
+			},
+			namespace: namespaceNoSupplementalGroupsFallbackToUID,
+		},
+		"pre-allocated group bad value fails": {
+			scc: func() *kapi.SecurityContextConstraints {
+				return &kapi.SecurityContextConstraints{
+					ObjectMeta: kapi.ObjectMeta{
+						Name: "pre-allocated no sup group annotation",
+					},
+					SELinuxContext: kapi.SELinuxContextStrategyOptions{
+						Type: kapi.SELinuxStrategyRunAsAny,
+					},
+					RunAsUser: kapi.RunAsUserStrategyOptions{
+						Type: kapi.RunAsUserStrategyRunAsAny,
+					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyMustRunAs,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyMustRunAs,
+					},
+				}
+			},
+			namespace:   namespaceBadSupGroups,
+			expectedErr: "unable to find pre-allocated group annotation",
 		},
 		"bad scc strategy options": {
 			scc: func() *kapi.SecurityContextConstraints {
@@ -460,6 +609,12 @@ func TestCreateProvidersFromConstraints(t *testing.T) {
 					},
 					RunAsUser: kapi.RunAsUserStrategyOptions{
 						Type: kapi.RunAsUserStrategyMustRunAs,
+					},
+					FSGroup: kapi.FSGroupStrategyOptions{
+						Type: kapi.FSGroupStrategyRunAsAny,
+					},
+					SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+						Type: kapi.SupplementalGroupsStrategyRunAsAny,
 					},
 				}
 			},
@@ -718,4 +873,82 @@ func TestDeduplicateSecurityContextConstraints(t *testing.T) {
 		}
 	}
 
+}
+
+func TestRequiresPreallocatedSupplementalGroups(t *testing.T) {
+	testCases := map[string]struct {
+		scc      *kapi.SecurityContextConstraints
+		requires bool
+	}{
+		"must run as": {
+			scc: &kapi.SecurityContextConstraints{
+				SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+					Type: kapi.SupplementalGroupsStrategyMustRunAs,
+				},
+			},
+			requires: true,
+		},
+		"must with range specified": {
+			scc: &kapi.SecurityContextConstraints{
+				SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+					Type: kapi.SupplementalGroupsStrategyMustRunAs,
+					Ranges: []kapi.IDRange{
+						{Min: 1, Max: 1},
+					},
+				},
+			},
+		},
+		"run as any": {
+			scc: &kapi.SecurityContextConstraints{
+				SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+					Type: kapi.SupplementalGroupsStrategyRunAsAny,
+				},
+			},
+		},
+	}
+	for k, v := range testCases {
+		result := requiresPreallocatedSupplementalGroups(v.scc)
+		if result != v.requires {
+			t.Errorf("%s expected result %t but got %t", k, v.requires, result)
+		}
+	}
+}
+
+func TestRequiresPreallocatedFSGroup(t *testing.T) {
+	testCases := map[string]struct {
+		scc      *kapi.SecurityContextConstraints
+		requires bool
+	}{
+		"must run as": {
+			scc: &kapi.SecurityContextConstraints{
+				FSGroup: kapi.FSGroupStrategyOptions{
+					Type: kapi.FSGroupStrategyMustRunAs,
+				},
+			},
+			requires: true,
+		},
+		"must with range specified": {
+			scc: &kapi.SecurityContextConstraints{
+				FSGroup: kapi.FSGroupStrategyOptions{
+					Type: kapi.FSGroupStrategyMustRunAs,
+					Ranges: []kapi.IDRange{
+						{Min: 1, Max: 1},
+					},
+				},
+			},
+		},
+		"run as any": {
+			scc: &kapi.SecurityContextConstraints{
+				FSGroup: kapi.FSGroupStrategyOptions{
+					Type: kapi.FSGroupStrategyRunAsAny,
+				},
+			},
+		},
+	}
+	for k, v := range testCases {
+		result := requiresPreallocatedFSGroup(v.scc)
+		if result != v.requires {
+			t.Errorf("%s expected result %t but got %t", k, v.requires, result)
+		}
+	}
 }
