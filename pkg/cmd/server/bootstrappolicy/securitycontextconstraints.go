@@ -31,6 +31,12 @@ func GetBootstrapSecurityContextConstraints(buildControllerUsername string) []ka
 			RunAsUser: kapi.RunAsUserStrategyOptions{
 				Type: kapi.RunAsUserStrategyRunAsAny,
 			},
+			FSGroup: kapi.FSGroupStrategyOptions{
+				Type: kapi.FSGroupStrategyRunAsAny,
+			},
+			SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+				Type: kapi.SupplementalGroupsStrategyRunAsAny,
+			},
 			Users:  []string{buildControllerUsername},
 			Groups: []string{ClusterAdminGroup, NodesGroup},
 		},
@@ -49,6 +55,18 @@ func GetBootstrapSecurityContextConstraints(buildControllerUsername string) []ka
 				// by the admission controller.  If namespaces are not annotated creating the strategy
 				// will fail.
 				Type: kapi.RunAsUserStrategyMustRunAsRange,
+			},
+			FSGroup: kapi.FSGroupStrategyOptions{
+				// This strategy requires that annotations on the namespace which will be populated
+				// by the admission controller.  If namespaces are not annotated creating the strategy
+				// will fail.
+				Type: kapi.FSGroupStrategyMustRunAs,
+			},
+			SupplementalGroups: kapi.SupplementalGroupsStrategyOptions{
+				// This strategy requires that annotations on the namespace which will be populated
+				// by the admission controller.  If namespaces are not annotated creating the strategy
+				// will fail.
+				Type: kapi.SupplementalGroupsStrategyMustRunAs,
 			},
 			Groups: []string{AuthenticatedGroup},
 		},

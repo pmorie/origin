@@ -32,8 +32,34 @@ At that time, the openshift docker registry image must be upgraded in order to c
 
 1. The `volume.metadata` field is deprecated as of Origin 1.0.6 in favor of `volume.downwardAPI`.
 
-1. New fields (`allowHostPID` and `allowHostIPC`) have been added to the default SCCs in Origin 1.0.7.  
+1. New fields (`fsGroup`, `supplementalGroups`, `allowHostPID` and `allowHostIPC`) have been added 
+to the default SCCs in Origin 1.0.7.  These allow you to control groups for persistent volumes,
+supplemental groups for the container, and usage of the host PID/IPC namespaces.  `fsGroup` and
+`supplementalGroups` will require an upgrade or reset to your current SCCs, `allowHostPID` and 
+`allowHostIPC` will default to false if not set.
 You may set these fields manually or [reset your default SCCs](https://docs.openshift.org/latest/admin_guide/manage_scc.html#updating-the-default-security-context-constraints).
+
+If you are resetting, the new defaults for the cluster will include:
+
+Privileged SCC:
+```
+fsGroup:
+    type: RunAsAny
+supplementalGroups:
+    type: RunAsAny
+allowHostIPC: true
+allowHostPID: true
+```
+
+Restricted SCC:
+```
+fsGroup:
+    type: MustRunAs
+supplementalGroups:
+    type: MustRunAs    
+allowHostIPC: false
+allowHostPID: false
+```
 
 1. The `v1beta3` API version is being removed in Origin 1.1 (OSE 3.1).
 Existing `v1beta3` resources stored in etcd will still be readable and
