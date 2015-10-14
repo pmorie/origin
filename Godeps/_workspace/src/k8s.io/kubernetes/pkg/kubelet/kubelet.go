@@ -59,6 +59,8 @@ import (
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/bandwidth"
+	"k8s.io/kubernetes/pkg/util/chmod"
+	"k8s.io/kubernetes/pkg/util/chown"
 	utilErrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/util/mount"
 	nodeutil "k8s.io/kubernetes/pkg/util/node"
@@ -166,6 +168,8 @@ func NewMainKubelet(
 	rktPath string,
 	rktStage1Image string,
 	mounter mount.Interface,
+	chownRunner chown.Interface,
+	chmodRunner chmod.Interface,
 	dockerDaemonContainer string,
 	systemContainer string,
 	configureCBR0 bool,
@@ -289,6 +293,8 @@ func NewMainKubelet(
 		oomWatcher:                     oomWatcher,
 		cgroupRoot:                     cgroupRoot,
 		mounter:                        mounter,
+		chownRunner:                    chownRunner,
+		chmodRunner:                    chmodRunner,
 		configureCBR0:                  configureCBR0,
 		podCIDR:                        podCIDR,
 		pods:                           pods,
@@ -544,6 +550,10 @@ type Kubelet struct {
 
 	// Mounter to use for volumes.
 	mounter mount.Interface
+	// chown.Interface implementation to use
+	chownRunner chown.Interface
+	// chmod.Interface implementation to use
+	chmodRunner chmod.Interface
 
 	// Manager of non-Runtime containers.
 	containerManager containerManager

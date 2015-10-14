@@ -51,12 +51,16 @@ func (p SimpleSecurityContextProvider) ModifyContainerConfig(pod *api.Pod, conta
 // security options, whether the container is privileged, volume binds, etc.
 func (p SimpleSecurityContextProvider) ModifyHostConfig(pod *api.Pod, container *api.Container, hostConfig *docker.HostConfig) {
 	// Apply pod security context
-	if pod.Spec.SecurityContext != nil {
-		if pod.Spec.SecurityContext.SupplementalGroups != nil && container.Name != leaky.PodInfraContainerName {
+	if container.Name != leaky.PodInfraContainerName && pod.Spec.SecurityContext != nil {
+		if pod.Spec.SecurityContext.SupplementalGroups != nil {
 			hostConfig.GroupAdd = make([]string, len(pod.Spec.SecurityContext.SupplementalGroups))
 			for i, group := range pod.Spec.SecurityContext.SupplementalGroups {
 				hostConfig.GroupAdd[i] = strconv.Itoa(group)
 			}
+		}
+
+		if pod.Spec.SecurityContext.FSGroup != nil {
+			hostConfig.GroupAdd = append(hostConfig.GroupAdd, strconv.Itoa(*pod.Spec.SecurityContext.FSGroup))
 		}
 	}
 

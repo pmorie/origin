@@ -135,6 +135,10 @@ type hostPathBuilder struct {
 
 var _ volume.Builder = &hostPathBuilder{}
 
+func (_ *hostPathBuilder) SupportsOwnershipManagement() bool {
+	return false
+}
+
 // SetUp does nothing.
 func (b *hostPathBuilder) SetUp() error {
 	return nil

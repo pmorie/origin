@@ -51,6 +51,8 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/qos"
 	"k8s.io/kubernetes/pkg/master/ports"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/chmod"
+	"k8s.io/kubernetes/pkg/util/chown"
 	"k8s.io/kubernetes/pkg/util/mount"
 	nodeutil "k8s.io/kubernetes/pkg/util/node"
 	"k8s.io/kubernetes/pkg/util/oom"
@@ -300,6 +302,9 @@ func (s *KubeletServer) UnsecuredKubeletConfig() (*KubeletConfig, error) {
 		mounter = mount.NewNsenterMounter()
 	}
 
+	chmodRunner := chmod.New()
+	chownRunner := chown.New()
+
 	tlsOptions, err := s.InitializeTLS()
 	if err != nil {
 		return nil, err
@@ -372,6 +377,8 @@ func (s *KubeletServer) UnsecuredKubeletConfig() (*KubeletConfig, error) {
 		MaxPods:                   s.MaxPods,
 		MinimumGCAge:              s.MinimumGCAge,
 		Mounter:                   mounter,
+		ChownRunner:               chownRunner,
+		ChmodRunner:               chmodRunner,
 		NetworkPluginName:         s.NetworkPluginName,
 		NetworkPlugins:            ProbeNetworkPlugins(s.NetworkPluginDir),
 		NodeStatusUpdateFrequency: s.NodeStatusUpdateFrequency,
@@ -628,6 +635,8 @@ func SimpleKubelet(client *client.Client,
 		MaxPods:                   32,
 		MinimumGCAge:              minimumGCAge,
 		Mounter:                   mount.New(),
+		ChownRunner:               chown.New(),
+		ChmodRunner:               chmod.New(),
 		NodeStatusUpdateFrequency: nodeStatusUpdateFrequency,
 		OSInterface:               osInterface,
 		PodInfraContainerImage:    dockertools.PodInfraContainerImage,
@@ -804,6 +813,8 @@ type KubeletConfig struct {
 	MaxPods                        int
 	MinimumGCAge                   time.Duration
 	Mounter                        mount.Interface
+	ChownRunner                    chown.Interface
+	ChmodRunner                    chmod.Interface
 	NetworkPluginName              string
 	NetworkPlugins                 []network.NetworkPlugin
 	NodeName                       string
@@ -886,6 +897,8 @@ func createAndInitKubelet(kc *KubeletConfig) (k KubeletBootstrap, pc *config.Pod
 		kc.RktPath,
 		kc.RktStage1Image,
 		kc.Mounter,
+		kc.ChownRunner,
+		kc.ChmodRunner,
 		kc.DockerDaemonContainer,
 		kc.SystemContainer,
 		kc.ConfigureCBR0,

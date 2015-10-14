@@ -19,6 +19,7 @@ package kubelet
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
 
 	"github.com/golang/glog"
@@ -105,6 +106,12 @@ func (kl *Kubelet) mountExternalVolumes(pod *api.Pod) (kubecontainer.VolumeMap, 
 	podVolumes := make(kubecontainer.VolumeMap)
 	for i := range pod.Spec.Volumes {
 		volSpec := &pod.Spec.Volumes[i]
+		hasFSGroup := false
+		var fsGroup int = 0
+		if pod.Spec.SecurityContext != nil && pod.Spec.SecurityContext.FSGroup != nil {
+			hasFSGroup = true
+			fsGroup = *pod.Spec.SecurityContext.FSGroup
+		}
 
 		rootContext, err := kl.getRootDirContext()
 		if err != nil {
@@ -124,6 +131,19 @@ func (kl *Kubelet) mountExternalVolumes(pod *api.Pod) (kubecontainer.VolumeMap, 
 		err = builder.SetUp()
 		if err != nil {
 			return nil, err
+		}
+		if hasFSGroup && builder.SupportsOwnershipManagement() {
+			path := builder.GetPath()
+
+			err = kl.chownRunner.Chown(builder.GetPath(), 0, int(fsGroup))
+			if err != nil {
+				glog.Errorf("Chown failed on %v: %v", path, err)
+			}
+
+			err = kl.chmodRunner.Chmod(builder.GetPath(), os.FileMode(0770|os.ModeSetgid))
+			if err != nil {
+				glog.Errorf("Chmod failed on %v: %v", path, err)
+			}
 		}
 		podVolumes[volSpec.Name] = builder
 	}
