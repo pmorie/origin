@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"path"
 
+	"github.com/golang/glog"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"k8s.io/kubernetes/pkg/runtime"
 	kyaml "k8s.io/kubernetes/pkg/util/yaml"
@@ -51,6 +52,7 @@ func ReadNodeConfig(filename string) (*configapi.NodeConfig, error) {
 }
 
 func ReadAndResolveNodeConfig(filename string) (*configapi.NodeConfig, error) {
+	glog.Infof("Reading node config from: %v\n", filename)
 	nodeConfig, err := ReadNodeConfig(filename)
 	if err != nil {
 		return nil, err
