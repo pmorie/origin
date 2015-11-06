@@ -51,6 +51,12 @@ func (unstructuredJSONScheme) DecodeInto(data []byte, obj Object) error {
 	}
 
 	m := make(map[string]interface{})
+
+	// jsonDecoder := json.NewDecoder(bytes.NewBuffer(data))
+	// jsonDecoder.UseNumber()
+	// json.NewEncoder()
+
+	// if err := jsonDecoder.Decode(&m); err != nil {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return err
 	}
