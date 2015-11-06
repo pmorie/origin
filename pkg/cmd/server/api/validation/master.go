@@ -16,6 +16,7 @@ import (
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/fielderrors"
 	"k8s.io/kubernetes/pkg/util/sets"
+	kuval "k8s.io/kubernetes/pkg/util/validation"
 
 	"github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
@@ -79,8 +80,11 @@ func ValidateMasterConfig(config *api.MasterConfig) ValidationResults {
 			if publicURL.Path == "/" {
 				validationResults.AddErrors(fielderrors.NewFieldInvalid("assetConfig.publicURL", config.AssetConfig.PublicURL, "path can not be / when colocated with master API"))
 			}
-			if !reflect.DeepEqual(config.AssetConfig.ServingInfo, config.ServingInfo) {
-				validationResults.AddWarnings(fielderrors.NewFieldInvalid("assetConfig.servingInfo", "<not displayed>", "assetConfig.servingInfo is ignored when colocated with master API"))
+
+			// Warn if they have customized the asset certificates in ways that will be ignored
+			if !reflect.DeepEqual(config.AssetConfig.ServingInfo.ServerCert, config.ServingInfo.ServerCert) ||
+				!reflect.DeepEqual(config.AssetConfig.ServingInfo.NamedCertificates, config.ServingInfo.NamedCertificates) {
+				validationResults.AddWarnings(fielderrors.NewFieldInvalid("assetConfig.servingInfo", "<not displayed>", "changes to assetConfig certificate configuration are not used when colocated with master API"))
 			}
 		}
 
@@ -194,18 +198,38 @@ func ValidateAPILevels(apiLevels []string, knownAPILevels, deadAPILevels []strin
 func ValidateEtcdStorageConfig(config api.EtcdStorageConfig) fielderrors.ValidationErrorList {
 	allErrs := fielderrors.ValidationErrorList{}
 
-	if len(config.KubernetesStorageVersion) == 0 {
-		allErrs = append(allErrs, fielderrors.NewFieldRequired("kubernetesStorageVersion"))
-	}
-	if len(config.OpenShiftStorageVersion) == 0 {
-		allErrs = append(allErrs, fielderrors.NewFieldRequired("openShiftStorageVersion"))
-	}
+	allErrs = append(allErrs, ValidateStorageVersionLevel(
+		config.KubernetesStorageVersion,
+		api.KnownKubernetesStorageVersionLevels,
+		api.DeadKubernetesStorageVersionLevels,
+		"kubernetesStorageVersion")...)
+	allErrs = append(allErrs, ValidateStorageVersionLevel(
+		config.OpenShiftStorageVersion,
+		api.KnownOpenShiftStorageVersionLevels,
+		api.DeadOpenShiftStorageVersionLevels,
+		"openShiftStorageVersion")...)
 
 	if strings.ContainsRune(config.KubernetesStoragePrefix, '%') {
 		allErrs = append(allErrs, fielderrors.NewFieldInvalid("kubernetesStoragePrefix", config.KubernetesStoragePrefix, "the '%' character may not be used in etcd path prefixes"))
 	}
 	if strings.ContainsRune(config.OpenShiftStoragePrefix, '%') {
 		allErrs = append(allErrs, fielderrors.NewFieldInvalid("openShiftStoragePrefix", config.OpenShiftStoragePrefix, "the '%' character may not be used in etcd path prefixes"))
+	}
+
+	return allErrs
+}
+
+func ValidateStorageVersionLevel(level string, knownAPILevels, deadAPILevels []string, name string) fielderrors.ValidationErrorList {
+	allErrs := fielderrors.ValidationErrorList{}
+
+	if len(level) == 0 {
+		allErrs = append(allErrs, fielderrors.NewFieldRequired(name))
+		return allErrs
+	}
+	supportedLevels := sets.NewString(knownAPILevels...)
+	supportedLevels.Delete(deadAPILevels...)
+	if !supportedLevels.Has(level) {
+		allErrs = append(allErrs, fielderrors.NewFieldValueNotSupported(name, level, supportedLevels.List()))
 	}
 
 	return allErrs
@@ -408,7 +432,24 @@ func ValidateKubernetesMasterConfig(config *api.KubernetesMasterConfig) Validati
 		}
 	}
 
-	validationResults.Append(ValidateAPILevels(config.APILevels, api.KnownKubernetesAPILevels, api.DeadKubernetesAPILevels, "apiLevels"))
+	for group, versions := range config.DisabledAPIGroupVersions {
+		name := "disabledAPIGroupVersions[" + group + "]"
+		if !api.KnownKubeAPIGroups.Has(group) {
+			validationResults.AddWarnings(fielderrors.NewFieldValueNotSupported(name, group, api.KnownKubeAPIGroups.List()))
+			continue
+		}
+
+		allowedVersions := sets.NewString(api.KubeAPIGroupsToAllowedVersions[group]...)
+		for i, version := range versions {
+			if version == "*" {
+				continue
+			}
+
+			if !allowedVersions.Has(version) {
+				validationResults.AddWarnings(fielderrors.NewFieldValueNotSupported(fmt.Sprintf("%s[%d]", name, i), version, allowedVersions.List()))
+			}
+		}
+	}
 
 	validationResults.AddErrors(ValidateAPIServerExtendedArguments(config.APIServerArguments).Prefix("apiServerArguments")...)
 	validationResults.AddErrors(ValidateControllerExtendedArguments(config.ControllerArguments).Prefix("controllerArguments")...)
@@ -464,7 +505,7 @@ func ValidateRoutingConfig(config api.RoutingConfig) fielderrors.ValidationError
 
 	if len(config.Subdomain) == 0 {
 		allErrs = append(allErrs, fielderrors.NewFieldRequired("subdomain"))
-	} else if !util.IsDNS1123Subdomain(config.Subdomain) {
+	} else if !kuval.IsDNS1123Subdomain(config.Subdomain) {
 		allErrs = append(allErrs, fielderrors.NewFieldInvalid("subdomain", config.Subdomain, "must be a valid subdomain"))
 	}
 

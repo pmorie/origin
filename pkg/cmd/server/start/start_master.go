@@ -18,7 +18,7 @@ import (
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/capabilities"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/kubelet"
+	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/openshift/origin/pkg/cmd/server/admin"
@@ -368,9 +368,9 @@ func (m *Master) Start() error {
 	capabilities.Initialize(capabilities.Capabilities{
 		AllowPrivileged: true,
 		PrivilegedSources: capabilities.PrivilegedSources{
-			HostNetworkSources: []string{kubelet.ApiserverSource, kubelet.FileSource},
-			HostPIDSources:     []string{kubelet.ApiserverSource, kubelet.FileSource},
-			HostIPCSources:     []string{kubelet.ApiserverSource, kubelet.FileSource},
+			HostNetworkSources: []string{kubelettypes.ApiserverSource, kubelettypes.FileSource},
+			HostPIDSources:     []string{kubelettypes.ApiserverSource, kubelettypes.FileSource},
+			HostIPCSources:     []string{kubelettypes.ApiserverSource, kubelettypes.FileSource},
 		},
 	})
 
@@ -530,6 +530,19 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		if err != nil {
 			glog.Fatalf("Could not get client for replication controller: %v", err)
 		}
+		_, jobClient, err := oc.GetServiceAccountClients(oc.JobControllerServiceAccount)
+		if err != nil {
+			glog.Fatalf("Could not get client for job controller: %v", err)
+		}
+		hpaOClient, hpaKClient, err := oc.GetServiceAccountClients(oc.HPAControllerServiceAccount)
+		if err != nil {
+			glog.Fatalf("Could not get client for HPA controller: %v", err)
+		}
+
+		_, pvKClient, err := oc.GetServiceAccountClients(oc.PersistentVolumeControllerServiceAccount)
+		if err != nil {
+			glog.Fatalf("Could not get client for persistent volume controller: %v", err)
+		}
 
 		// called by admission control
 		kc.RunResourceQuotaManager()
@@ -538,10 +551,12 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		kc.RunNodeController()
 		kc.RunScheduler()
 		kc.RunReplicationController(rcClient)
+		kc.RunJobController(jobClient)
+		kc.RunHPAController(hpaOClient, hpaKClient, oc.Options.PolicyConfig.OpenShiftInfrastructureNamespace)
 		kc.RunEndpointController()
 		kc.RunNamespaceController()
 		kc.RunPersistentVolumeClaimBinder()
-		kc.RunPersistentVolumeClaimRecycler(oc.ImageFor("deployer"))
+		kc.RunPersistentVolumeClaimRecycler(oc.ImageFor("deployer"), pvKClient)
 
 		glog.Infof("Started Kubernetes Controllers")
 	}

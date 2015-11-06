@@ -67,6 +67,11 @@ func (r ComponentReferences) filter(filterFunc func(ref ComponentReference) bool
 	return refs
 }
 
+// HasSource returns true if there is more than one component that has a repo associated
+func (r ComponentReferences) HasSource() bool {
+	return len(r.filter(func(ref ComponentReference) bool { return ref.Input().Uses != nil })) > 0
+}
+
 // NeedsSource returns all the components that need source code in order to build
 func (r ComponentReferences) NeedsSource() (refs ComponentReferences) {
 	return r.filter(func(ref ComponentReference) bool {
@@ -88,13 +93,24 @@ func (r ComponentReferences) TemplateComponentRefs() (refs ComponentReferences) 
 	})
 }
 
+// InstallableComponentRefs returns the list of component references to templates
+func (r ComponentReferences) InstallableComponentRefs() (refs ComponentReferences) {
+	return r.filter(func(ref ComponentReference) bool {
+		return ref.Input() != nil && ref.Input().ResolvedMatch != nil && ref.Input().ResolvedMatch.GeneratorInput.Job
+	})
+}
+
 func (r ComponentReferences) String() string {
+	return r.HumanString(",")
+}
+
+func (r ComponentReferences) HumanString(separator string) string {
 	components := []string{}
 	for _, ref := range r {
 		components = append(components, ref.Input().Value)
 	}
 
-	return strings.Join(components, ",")
+	return strings.Join(components, separator)
 }
 
 // GroupedComponentReferences is a set of components that can be grouped
@@ -121,6 +137,14 @@ func (r ComponentReferences) Group() (refs []ComponentReferences) {
 		refs[len(refs)-1] = append(refs[len(refs)-1], ref)
 	}
 	return
+}
+
+// GeneratorJobReference is a reference that should be treated as a job execution,
+// not a direct app creation.
+type GeneratorJobReference struct {
+	Ref   ComponentReference
+	Input GeneratorInput
+	Err   error
 }
 
 // ReferenceBuilder is used for building all the necessary object references
@@ -232,10 +256,11 @@ func NewComponentInput(input string) (*ComponentInput, string, error) {
 
 // ComponentInput is the necessary input for creating a component
 type ComponentInput struct {
-	GroupID       int
-	From          string
-	Argument      string
-	Value         string
+	GroupID  int
+	From     string
+	Argument string
+	Value    string
+
 	ExpectToBuild bool
 
 	Uses          *SourceRepository

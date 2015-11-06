@@ -440,6 +440,22 @@ func TestServiceRegistryResourceLocation(t *testing.T) {
 					Ports:     []api.EndpointPort{{Name: "", Port: 80}, {Name: "p", Port: 93}},
 				}},
 			},
+			{
+				ObjectMeta: api.ObjectMeta{
+					Name:      "foo",
+					Namespace: api.NamespaceDefault,
+				},
+				Subsets: []api.EndpointSubset{{
+					Addresses: []api.EndpointAddress{},
+					Ports:     []api.EndpointPort{{Name: "", Port: 80}, {Name: "p", Port: 93}},
+				}, {
+					Addresses: []api.EndpointAddress{{IP: "1.2.3.4"}},
+					Ports:     []api.EndpointPort{{Name: "", Port: 80}, {Name: "p", Port: 93}},
+				}, {
+					Addresses: []api.EndpointAddress{{IP: "1.2.3.5"}},
+					Ports:     []api.EndpointPort{},
+				}},
+			},
 		},
 	}
 	storage, registry := NewTestREST(t, endpoints)
@@ -465,6 +481,18 @@ func TestServiceRegistryResourceLocation(t *testing.T) {
 
 	// Test a name + port.
 	location, _, err = redirector.ResourceLocation(ctx, "foo:p")
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if location == nil {
+		t.Errorf("Unexpected nil: %v", location)
+	}
+	if e, a := "//1.2.3.4:93", location.String(); e != a {
+		t.Errorf("Expected %v, but got %v", e, a)
+	}
+
+	// Test a name + port number.
+	location, _, err = redirector.ResourceLocation(ctx, "foo:93")
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}

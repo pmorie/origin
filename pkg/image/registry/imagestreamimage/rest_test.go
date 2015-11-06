@@ -37,8 +37,8 @@ func setup(t *testing.T) (*tools.FakeEtcdClient, kstorage.Interface, *REST) {
 	helper := etcdstorage.NewEtcdStorage(fakeEtcdClient, latest.Codec, etcdtest.PathPrefix())
 	imageStorage := imageetcd.NewREST(helper)
 	imageRegistry := image.NewRegistry(imageStorage)
-	imageStreamStorage, imageStreamStatus := imagestreametcd.NewREST(helper, testDefaultRegistry, &fakeSubjectAccessReviewRegistry{})
-	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatus)
+	imageStreamStorage, imageStreamStatus, internalStorage := imagestreametcd.NewREST(helper, testDefaultRegistry, &fakeSubjectAccessReviewRegistry{})
+	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatus, internalStorage)
 	storage := NewREST(imageRegistry, imageStreamRegistry)
 	return fakeEtcdClient, helper, storage
 }
@@ -235,7 +235,7 @@ func TestGet(t *testing.T) {
 		fakeEtcdClient, _, storage := setup(t)
 
 		if test.repo != nil {
-			fakeEtcdClient.Data["/imagestreams/default/repo"] = tools.EtcdResponseWithError{
+			fakeEtcdClient.Data[etcdtest.AddPrefix("/imagestreams/default/repo")] = tools.EtcdResponseWithError{
 				R: &etcd.Response{
 					Node: &etcd.Node{
 						Value: runtime.EncodeOrDie(latest.Codec, test.repo),
@@ -243,7 +243,7 @@ func TestGet(t *testing.T) {
 				},
 			}
 		} else {
-			fakeEtcdClient.Data["/imagestreams/default/repo"] = tools.EtcdResponseWithError{
+			fakeEtcdClient.Data[etcdtest.AddPrefix("/imagestreams/default/repo")] = tools.EtcdResponseWithError{
 				R: &etcd.Response{
 					Node: nil,
 				},
@@ -252,7 +252,7 @@ func TestGet(t *testing.T) {
 		}
 
 		if test.image != nil {
-			fakeEtcdClient.Data["/images/id"] = tools.EtcdResponseWithError{
+			fakeEtcdClient.Data[etcdtest.AddPrefix("/images/id")] = tools.EtcdResponseWithError{
 				R: &etcd.Response{
 					Node: &etcd.Node{
 						Value: runtime.EncodeOrDie(latest.Codec, test.image),
@@ -260,7 +260,7 @@ func TestGet(t *testing.T) {
 				},
 			}
 		} else {
-			fakeEtcdClient.Data["/images/id"] = tools.EtcdResponseWithError{
+			fakeEtcdClient.Data[etcdtest.AddPrefix("/images/id")] = tools.EtcdResponseWithError{
 				R: &etcd.Response{
 					Node: nil,
 				},

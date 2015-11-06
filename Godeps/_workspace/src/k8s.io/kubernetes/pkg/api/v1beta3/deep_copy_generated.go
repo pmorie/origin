@@ -23,6 +23,7 @@ import (
 
 	api "k8s.io/kubernetes/pkg/api"
 	resource "k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	conversion "k8s.io/kubernetes/pkg/conversion"
 	runtime "k8s.io/kubernetes/pkg/runtime"
 	util "k8s.io/kubernetes/pkg/util"
@@ -256,6 +257,7 @@ func deepCopy_v1beta3_Container(in Container, out *Container, c *conversion.Clon
 		out.SecurityContext = nil
 	}
 	out.Stdin = in.Stdin
+	out.StdinOnce = in.StdinOnce
 	out.TTY = in.TTY
 	return nil
 }
@@ -321,6 +323,7 @@ func deepCopy_v1beta3_ContainerStateTerminated(in ContainerStateTerminated, out 
 
 func deepCopy_v1beta3_ContainerStateWaiting(in ContainerStateWaiting, out *ContainerStateWaiting, c *conversion.Cloner) error {
 	out.Reason = in.Reason
+	out.Message = in.Message
 	return nil
 }
 
@@ -337,6 +340,11 @@ func deepCopy_v1beta3_ContainerStatus(in ContainerStatus, out *ContainerStatus, 
 	out.Image = in.Image
 	out.ImageID = in.ImageID
 	out.ContainerID = in.ContainerID
+	return nil
+}
+
+func deepCopy_v1beta3_DaemonEndpoint(in DaemonEndpoint, out *DaemonEndpoint, c *conversion.Cloner) error {
+	out.Port = in.Port
 	return nil
 }
 
@@ -410,6 +418,16 @@ func deepCopy_v1beta3_EndpointSubset(in EndpointSubset, out *EndpointSubset, c *
 		}
 	} else {
 		out.Addresses = nil
+	}
+	if in.NotReadyAddresses != nil {
+		out.NotReadyAddresses = make([]EndpointAddress, len(in.NotReadyAddresses))
+		for i := range in.NotReadyAddresses {
+			if err := deepCopy_v1beta3_EndpointAddress(in.NotReadyAddresses[i], &out.NotReadyAddresses[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.NotReadyAddresses = nil
 	}
 	if in.Ports != nil {
 		out.Ports = make([]EndpointPort, len(in.Ports))
@@ -550,6 +568,31 @@ func deepCopy_v1beta3_ExecAction(in ExecAction, out *ExecAction, c *conversion.C
 	} else {
 		out.Command = nil
 	}
+	return nil
+}
+
+func deepCopy_v1beta3_FCVolumeSource(in FCVolumeSource, out *FCVolumeSource, c *conversion.Cloner) error {
+	if in.TargetWWNs != nil {
+		out.TargetWWNs = make([]string, len(in.TargetWWNs))
+		for i := range in.TargetWWNs {
+			out.TargetWWNs[i] = in.TargetWWNs[i]
+		}
+	} else {
+		out.TargetWWNs = nil
+	}
+	if in.Lun != nil {
+		out.Lun = new(int)
+		*out.Lun = *in.Lun
+	} else {
+		out.Lun = nil
+	}
+	out.FSType = in.FSType
+	out.ReadOnly = in.ReadOnly
+	return nil
+}
+
+func deepCopy_v1beta3_FlockerVolumeSource(in FlockerVolumeSource, out *FlockerVolumeSource, c *conversion.Cloner) error {
+	out.DatasetName = in.DatasetName
 	return nil
 }
 
@@ -938,6 +981,13 @@ func deepCopy_v1beta3_NodeCondition(in NodeCondition, out *NodeCondition, c *con
 	return nil
 }
 
+func deepCopy_v1beta3_NodeDaemonEndpoints(in NodeDaemonEndpoints, out *NodeDaemonEndpoints, c *conversion.Cloner) error {
+	if err := deepCopy_v1beta3_DaemonEndpoint(in.KubeletEndpoint, &out.KubeletEndpoint, c); err != nil {
+		return err
+	}
+	return nil
+}
+
 func deepCopy_v1beta3_NodeList(in NodeList, out *NodeList, c *conversion.Cloner) error {
 	if err := deepCopy_v1beta3_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
 		return err
@@ -1000,6 +1050,9 @@ func deepCopy_v1beta3_NodeStatus(in NodeStatus, out *NodeStatus, c *conversion.C
 	} else {
 		out.Addresses = nil
 	}
+	if err := deepCopy_v1beta3_NodeDaemonEndpoints(in.DaemonEndpoints, &out.DaemonEndpoints, c); err != nil {
+		return err
+	}
 	if err := deepCopy_v1beta3_NodeSystemInfo(in.NodeInfo, &out.NodeInfo, c); err != nil {
 		return err
 	}
@@ -1036,7 +1089,7 @@ func deepCopy_v1beta3_ObjectMeta(in ObjectMeta, out *ObjectMeta, c *conversion.C
 		return err
 	}
 	if in.DeletionTimestamp != nil {
-		out.DeletionTimestamp = new(util.Time)
+		out.DeletionTimestamp = new(unversioned.Time)
 		if err := deepCopy_util_Time(*in.DeletionTimestamp, out.DeletionTimestamp, c); err != nil {
 			return err
 		}
@@ -1271,6 +1324,22 @@ func deepCopy_v1beta3_PersistentVolumeSource(in PersistentVolumeSource, out *Per
 	} else {
 		out.Cinder = nil
 	}
+	if in.FC != nil {
+		out.FC = new(FCVolumeSource)
+		if err := deepCopy_v1beta3_FCVolumeSource(*in.FC, out.FC, c); err != nil {
+			return err
+		}
+	} else {
+		out.FC = nil
+	}
+	if in.Flocker != nil {
+		out.Flocker = new(FlockerVolumeSource)
+		if err := deepCopy_v1beta3_FlockerVolumeSource(*in.Flocker, out.Flocker, c); err != nil {
+			return err
+		}
+	} else {
+		out.Flocker = nil
+	}
 	return nil
 }
 
@@ -1333,9 +1402,29 @@ func deepCopy_v1beta3_Pod(in Pod, out *Pod, c *conversion.Cloner) error {
 	return nil
 }
 
+func deepCopy_v1beta3_PodAttachOptions(in PodAttachOptions, out *PodAttachOptions, c *conversion.Cloner) error {
+	if err := deepCopy_v1beta3_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
+		return err
+	}
+	out.Stdin = in.Stdin
+	out.Stdout = in.Stdout
+	out.Stderr = in.Stderr
+	out.TTY = in.TTY
+	out.Container = in.Container
+	return nil
+}
+
 func deepCopy_v1beta3_PodCondition(in PodCondition, out *PodCondition, c *conversion.Cloner) error {
 	out.Type = in.Type
 	out.Status = in.Status
+	if err := deepCopy_util_Time(in.LastProbeTime, &out.LastProbeTime, c); err != nil {
+		return err
+	}
+	if err := deepCopy_util_Time(in.LastTransitionTime, &out.LastTransitionTime, c); err != nil {
+		return err
+	}
+	out.Reason = in.Reason
+	out.Message = in.Message
 	return nil
 }
 
@@ -1386,6 +1475,33 @@ func deepCopy_v1beta3_PodLogOptions(in PodLogOptions, out *PodLogOptions, c *con
 	out.Container = in.Container
 	out.Follow = in.Follow
 	out.Previous = in.Previous
+	if in.SinceSeconds != nil {
+		out.SinceSeconds = new(int64)
+		*out.SinceSeconds = *in.SinceSeconds
+	} else {
+		out.SinceSeconds = nil
+	}
+	if in.SinceTime != nil {
+		out.SinceTime = new(unversioned.Time)
+		if err := deepCopy_util_Time(*in.SinceTime, out.SinceTime, c); err != nil {
+			return err
+		}
+	} else {
+		out.SinceTime = nil
+	}
+	out.Timestamps = in.Timestamps
+	if in.TailLines != nil {
+		out.TailLines = new(int64)
+		*out.TailLines = *in.TailLines
+	} else {
+		out.TailLines = nil
+	}
+	if in.LimitBytes != nil {
+		out.LimitBytes = new(int64)
+		*out.LimitBytes = *in.LimitBytes
+	} else {
+		out.LimitBytes = nil
+	}
 	return nil
 }
 
@@ -1394,6 +1510,44 @@ func deepCopy_v1beta3_PodProxyOptions(in PodProxyOptions, out *PodProxyOptions, 
 		return err
 	}
 	out.Path = in.Path
+	return nil
+}
+
+func deepCopy_v1beta3_PodSecurityContext(in PodSecurityContext, out *PodSecurityContext, c *conversion.Cloner) error {
+	if in.SELinuxOptions != nil {
+		out.SELinuxOptions = new(SELinuxOptions)
+		if err := deepCopy_v1beta3_SELinuxOptions(*in.SELinuxOptions, out.SELinuxOptions, c); err != nil {
+			return err
+		}
+	} else {
+		out.SELinuxOptions = nil
+	}
+	if in.RunAsUser != nil {
+		out.RunAsUser = new(int64)
+		*out.RunAsUser = *in.RunAsUser
+	} else {
+		out.RunAsUser = nil
+	}
+	if in.RunAsNonRoot != nil {
+		out.RunAsNonRoot = new(bool)
+		*out.RunAsNonRoot = *in.RunAsNonRoot
+	} else {
+		out.RunAsNonRoot = nil
+	}
+	if in.SupplementalGroups != nil {
+		out.SupplementalGroups = make([]int64, len(in.SupplementalGroups))
+		for i := range in.SupplementalGroups {
+			out.SupplementalGroups[i] = in.SupplementalGroups[i]
+		}
+	} else {
+		out.SupplementalGroups = nil
+	}
+	if in.FSGroup != nil {
+		out.FSGroup = new(int64)
+		*out.FSGroup = *in.FSGroup
+	} else {
+		out.FSGroup = nil
+	}
 	return nil
 }
 
@@ -1445,6 +1599,14 @@ func deepCopy_v1beta3_PodSpec(in PodSpec, out *PodSpec, c *conversion.Cloner) er
 	out.HostNetwork = in.HostNetwork
 	out.HostPID = in.HostPID
 	out.HostIPC = in.HostIPC
+	if in.SecurityContext != nil {
+		out.SecurityContext = new(PodSecurityContext)
+		if err := deepCopy_v1beta3_PodSecurityContext(*in.SecurityContext, out.SecurityContext, c); err != nil {
+			return err
+		}
+	} else {
+		out.SecurityContext = nil
+	}
 	if in.ImagePullSecrets != nil {
 		out.ImagePullSecrets = make([]LocalObjectReference, len(in.ImagePullSecrets))
 		for i := range in.ImagePullSecrets {
@@ -1475,7 +1637,7 @@ func deepCopy_v1beta3_PodStatus(in PodStatus, out *PodStatus, c *conversion.Clon
 	out.HostIP = in.HostIP
 	out.PodIP = in.PodIP
 	if in.StartTime != nil {
-		out.StartTime = new(util.Time)
+		out.StartTime = new(unversioned.Time)
 		if err := deepCopy_util_Time(*in.StartTime, out.StartTime, c); err != nil {
 			return err
 		}
@@ -1949,6 +2111,12 @@ func deepCopy_v1beta3_SecurityContextConstraints(in SecurityContextConstraints, 
 	if err := deepCopy_v1beta3_ObjectMeta(in.ObjectMeta, &out.ObjectMeta, c); err != nil {
 		return err
 	}
+	if in.Priority != nil {
+		out.Priority = new(int)
+		*out.Priority = *in.Priority
+	} else {
+		out.Priority = nil
+	}
 	out.AllowPrivilegedContainer = in.AllowPrivilegedContainer
 	if in.AllowedCapabilities != nil {
 		out.AllowedCapabilities = make([]Capability, len(in.AllowedCapabilities))
@@ -2152,6 +2320,7 @@ func deepCopy_v1beta3_ServiceSpec(in ServiceSpec, out *ServiceSpec, c *conversio
 		out.PublicIPs = nil
 	}
 	out.SessionAffinity = in.SessionAffinity
+	out.LoadBalancerIP = in.LoadBalancerIP
 	return nil
 }
 
@@ -2159,52 +2328,6 @@ func deepCopy_v1beta3_ServiceStatus(in ServiceStatus, out *ServiceStatus, c *con
 	if err := deepCopy_v1beta3_LoadBalancerStatus(in.LoadBalancer, &out.LoadBalancer, c); err != nil {
 		return err
 	}
-	return nil
-}
-
-func deepCopy_v1beta3_Status(in Status, out *Status, c *conversion.Cloner) error {
-	if err := deepCopy_v1beta3_TypeMeta(in.TypeMeta, &out.TypeMeta, c); err != nil {
-		return err
-	}
-	if err := deepCopy_v1beta3_ListMeta(in.ListMeta, &out.ListMeta, c); err != nil {
-		return err
-	}
-	out.Status = in.Status
-	out.Message = in.Message
-	out.Reason = in.Reason
-	if in.Details != nil {
-		out.Details = new(StatusDetails)
-		if err := deepCopy_v1beta3_StatusDetails(*in.Details, out.Details, c); err != nil {
-			return err
-		}
-	} else {
-		out.Details = nil
-	}
-	out.Code = in.Code
-	return nil
-}
-
-func deepCopy_v1beta3_StatusCause(in StatusCause, out *StatusCause, c *conversion.Cloner) error {
-	out.Type = in.Type
-	out.Message = in.Message
-	out.Field = in.Field
-	return nil
-}
-
-func deepCopy_v1beta3_StatusDetails(in StatusDetails, out *StatusDetails, c *conversion.Cloner) error {
-	out.ID = in.ID
-	out.Kind = in.Kind
-	if in.Causes != nil {
-		out.Causes = make([]StatusCause, len(in.Causes))
-		for i := range in.Causes {
-			if err := deepCopy_v1beta3_StatusCause(in.Causes[i], &out.Causes[i], c); err != nil {
-				return err
-			}
-		}
-	} else {
-		out.Causes = nil
-	}
-	out.RetryAfterSeconds = in.RetryAfterSeconds
 	return nil
 }
 
@@ -2379,7 +2502,7 @@ func deepCopy_util_IntOrString(in util.IntOrString, out *util.IntOrString, c *co
 	return nil
 }
 
-func deepCopy_util_Time(in util.Time, out *util.Time, c *conversion.Cloner) error {
+func deepCopy_util_Time(in unversioned.Time, out *unversioned.Time, c *conversion.Cloner) error {
 	if newVal, err := c.DeepCopy(in.Time); err != nil {
 		return err
 	} else {
@@ -2406,6 +2529,7 @@ func init() {
 		deepCopy_v1beta3_ContainerStateTerminated,
 		deepCopy_v1beta3_ContainerStateWaiting,
 		deepCopy_v1beta3_ContainerStatus,
+		deepCopy_v1beta3_DaemonEndpoint,
 		deepCopy_v1beta3_DeleteOptions,
 		deepCopy_v1beta3_DownwardAPIVolumeFile,
 		deepCopy_v1beta3_DownwardAPIVolumeSource,
@@ -2421,6 +2545,8 @@ func init() {
 		deepCopy_v1beta3_EventList,
 		deepCopy_v1beta3_EventSource,
 		deepCopy_v1beta3_ExecAction,
+		deepCopy_v1beta3_FCVolumeSource,
+		deepCopy_v1beta3_FlockerVolumeSource,
 		deepCopy_v1beta3_FSGroupStrategyOptions,
 		deepCopy_v1beta3_GCEPersistentDiskVolumeSource,
 		deepCopy_v1beta3_GitRepoVolumeSource,
@@ -2451,6 +2577,7 @@ func init() {
 		deepCopy_v1beta3_Node,
 		deepCopy_v1beta3_NodeAddress,
 		deepCopy_v1beta3_NodeCondition,
+		deepCopy_v1beta3_NodeDaemonEndpoints,
 		deepCopy_v1beta3_NodeList,
 		deepCopy_v1beta3_NodeSpec,
 		deepCopy_v1beta3_NodeStatus,
@@ -2469,11 +2596,13 @@ func init() {
 		deepCopy_v1beta3_PersistentVolumeSpec,
 		deepCopy_v1beta3_PersistentVolumeStatus,
 		deepCopy_v1beta3_Pod,
+		deepCopy_v1beta3_PodAttachOptions,
 		deepCopy_v1beta3_PodCondition,
 		deepCopy_v1beta3_PodExecOptions,
 		deepCopy_v1beta3_PodList,
 		deepCopy_v1beta3_PodLogOptions,
 		deepCopy_v1beta3_PodProxyOptions,
+		deepCopy_v1beta3_PodSecurityContext,
 		deepCopy_v1beta3_PodSpec,
 		deepCopy_v1beta3_PodStatus,
 		deepCopy_v1beta3_PodStatusResult,
@@ -2509,9 +2638,6 @@ func init() {
 		deepCopy_v1beta3_ServicePort,
 		deepCopy_v1beta3_ServiceSpec,
 		deepCopy_v1beta3_ServiceStatus,
-		deepCopy_v1beta3_Status,
-		deepCopy_v1beta3_StatusCause,
-		deepCopy_v1beta3_StatusDetails,
 		deepCopy_v1beta3_SupplementalGroupsStrategyOptions,
 		deepCopy_v1beta3_TCPSocketAction,
 		deepCopy_v1beta3_TypeMeta,

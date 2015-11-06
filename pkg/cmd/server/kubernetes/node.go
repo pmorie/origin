@@ -12,11 +12,13 @@ import (
 	dockerclient "github.com/fsouza/go-dockerclient"
 	"github.com/golang/glog"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
 	"k8s.io/kubernetes/pkg/kubelet/dockertools"
 	pconfig "k8s.io/kubernetes/pkg/proxy/config"
 	proxy "k8s.io/kubernetes/pkg/proxy/userspace"
 	"k8s.io/kubernetes/pkg/util"
+	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	kexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/iptables"
 
@@ -124,23 +126,34 @@ func (c *NodeConfig) initializeVolumeDir(ce commandExecutor, path string) (strin
 
 // RunKubelet starts the Kubelet.
 func (c *NodeConfig) RunKubelet() {
-	// TODO: clean this up and make it more formal (service named 'dns'?). Use multiple ports.
-	clusterDNS := c.KubeletConfig.ClusterDNS
-	if clusterDNS == nil {
-		if service, err := c.Client.Endpoints(kapi.NamespaceDefault).Get("kubernetes"); err == nil {
-			if ip, ok := firstIP(service, 53); ok {
-				if err := cmdutil.WaitForSuccessfulDial(false, "tcp", fmt.Sprintf("%s:%d", ip, 53), 50*time.Millisecond, 0, 2); err == nil {
-					c.KubeletConfig.ClusterDNS = net.ParseIP(ip)
+	if c.KubeletConfig.ClusterDNS == nil {
+		if service, err := c.Client.Services(kapi.NamespaceDefault).Get("kubernetes"); err == nil {
+			if includesServicePort(service.Spec.Ports, 53, "dns") {
+				// Use master service if service includes "dns" port 53.
+				c.KubeletConfig.ClusterDNS = net.ParseIP(service.Spec.ClusterIP)
+			}
+		}
+	}
+	if c.KubeletConfig.ClusterDNS == nil {
+		if endpoint, err := c.Client.Endpoints(kapi.NamespaceDefault).Get("kubernetes"); err == nil {
+			if endpointIP, ok := firstEndpointIPWithNamedPort(endpoint, 53, "dns"); ok {
+				// Use first endpoint if endpoint includes "dns" port 53.
+				c.KubeletConfig.ClusterDNS = net.ParseIP(endpointIP)
+			} else if endpointIP, ok := firstEndpointIP(endpoint, 53); ok {
+				// Test and use first endpoint if endpoint includes any port 53.
+				if err := cmdutil.WaitForSuccessfulDial(false, "tcp", fmt.Sprintf("%s:%d", endpointIP, 53), 50*time.Millisecond, 0, 2); err == nil {
+					c.KubeletConfig.ClusterDNS = net.ParseIP(endpointIP)
 				}
 			}
 		}
 	}
+
 	c.KubeletConfig.DockerClient = c.DockerClient
 	// updated by NodeConfig.EnsureVolumeDir
 	c.KubeletConfig.RootDirectory = c.VolumeDir
 
 	// hook for overriding the cadvisor interface for integration tests
-	c.KubeletConfig.CadvisorInterface = defaultCadvisorInterface
+	c.KubeletConfig.CAdvisorInterface = defaultCadvisorInterface
 
 	go func() {
 		glog.Fatal(c.KubeletServer.Run(c.KubeletConfig))
@@ -193,8 +206,18 @@ func (c *NodeConfig) RunProxy(endpointsFilterer FilteringEndpointsConfigHandler)
 		glog.Fatalf("Cannot parse the provided ip-tables sync period (%s) : %v", c.IPTablesSyncPeriod, err)
 	}
 
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartRecordingToSink(c.Client.Events(""))
+	recorder := eventBroadcaster.NewRecorder(kapi.EventSource{Component: "kube-proxy", Host: c.KubeletConfig.NodeName})
+	nodeRef := &kapi.ObjectReference{
+		Kind: "Node",
+		Name: c.KubeletConfig.NodeName,
+	}
+
 	go util.Forever(func() {
-		proxier, err := proxy.NewProxier(loadBalancer, ip, iptables.New(kexec.New(), protocol), util.PortRange{}, syncPeriod)
+		dbus := utildbus.New()
+		iptables := iptables.New(kexec.New(), dbus, protocol)
+		proxier, err := proxy.NewProxier(loadBalancer, ip, iptables, util.PortRange{}, syncPeriod)
 		if err != nil {
 			switch {
 			// conflicting use of iptables, retry
@@ -222,13 +245,24 @@ func (c *NodeConfig) RunProxy(endpointsFilterer FilteringEndpointsConfigHandler)
 			endpointsConfig.Channel("api"))
 
 		serviceConfig.RegisterHandler(proxier)
+		recorder.Eventf(nodeRef, "Starting", "Starting kube-proxy.")
 		glog.Infof("Started Kubernetes Proxy on %s", host)
 		select {}
 	}, 5*time.Second)
 }
 
 // TODO: more generic location
-func includesPort(ports []kapi.EndpointPort, port int) bool {
+func includesServicePort(ports []kapi.ServicePort, port int, portName string) bool {
+	for _, p := range ports {
+		if p.Port == port && p.Name == portName {
+			return true
+		}
+	}
+	return false
+}
+
+// TODO: more generic location
+func includesEndpointPort(ports []kapi.EndpointPort, port int) bool {
 	for _, p := range ports {
 		if p.Port == port {
 			return true
@@ -238,9 +272,9 @@ func includesPort(ports []kapi.EndpointPort, port int) bool {
 }
 
 // TODO: more generic location
-func firstIP(endpoints *kapi.Endpoints, port int) (string, bool) {
+func firstEndpointIP(endpoints *kapi.Endpoints, port int) (string, bool) {
 	for _, s := range endpoints.Subsets {
-		if !includesPort(s.Ports, port) {
+		if !includesEndpointPort(s.Ports, port) {
 			continue
 		}
 		for _, a := range s.Addresses {
@@ -248,4 +282,27 @@ func firstIP(endpoints *kapi.Endpoints, port int) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// TODO: more generic location
+func firstEndpointIPWithNamedPort(endpoints *kapi.Endpoints, port int, portName string) (string, bool) {
+	for _, s := range endpoints.Subsets {
+		if !includesNamedEndpointPort(s.Ports, port, portName) {
+			continue
+		}
+		for _, a := range s.Addresses {
+			return a.IP, true
+		}
+	}
+	return "", false
+}
+
+// TODO: more generic location
+func includesNamedEndpointPort(ports []kapi.EndpointPort, port int, portName string) bool {
+	for _, p := range ports {
+		if p.Port == port && p.Name == portName {
+			return true
+		}
+	}
+	return false
 }

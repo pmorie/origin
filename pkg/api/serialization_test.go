@@ -17,6 +17,7 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	osapi "github.com/openshift/origin/pkg/api"
 	_ "github.com/openshift/origin/pkg/api/latest"
@@ -220,6 +221,16 @@ func fuzzInternalObject(t *testing.T, forVersion string, item runtime.Object, se
 		func(j *deploy.DeploymentConfig, c fuzz.Continue) {
 			c.FuzzNoCustom(j)
 			j.Triggers = []deploy.DeploymentTriggerPolicy{{Type: deploy.DeploymentTriggerOnConfigChange}}
+			if forVersion == "v1beta3" {
+				// v1beta3 does not contain the PodSecurityContext type.  For this API version, only fuzz
+				// the host namespace fields.  The fields set to nil here are the other fields of the
+				// PodSecurityContext that will not roundtrip correctly from internal->v1beta3->internal.
+				j.Template.ControllerTemplate.Template.Spec.SecurityContext.SELinuxOptions = nil
+				j.Template.ControllerTemplate.Template.Spec.SecurityContext.RunAsUser = nil
+				j.Template.ControllerTemplate.Template.Spec.SecurityContext.RunAsNonRoot = nil
+				j.Template.ControllerTemplate.Template.Spec.SecurityContext.SupplementalGroups = nil
+				j.Template.ControllerTemplate.Template.Spec.SecurityContext.FSGroup = nil
+			}
 		},
 		func(j *deploy.DeploymentStrategy, c fuzz.Continue) {
 			c.FuzzNoCustom(j)
@@ -371,7 +382,10 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 	}
 }
 
+// skipStandardVersions is a map of Kind to a list of API versions to test with.
 var skipStandardVersions = map[string][]string{
+	// The API versions here are to test our object that serializes from/into
+	// docker's registry API.
 	"DockerImage": {"pre012", "1.0"},
 }
 
@@ -382,25 +396,38 @@ func TestSpecificKind(t *testing.T) {
 	api.Scheme.Log(t)
 	defer api.Scheme.Log(nil)
 
-	kind := "ImageStreamTag"
+	kind := "DeploymentConfig"
 	item, err := api.Scheme.New("", kind)
 	if err != nil {
 		t.Errorf("Couldn't make a %v? %v", kind, err)
 		return
 	}
 	seed := int64(2703387474910584091) //rand.Int63()
-	fuzzInternalObject(t, "", item, seed)
-	roundTrip(t, osapi.Codec, item)
-	roundTrip(t, v1beta3.Codec, item)
-	roundTrip(t, v1.Codec, item)
+	for i := 0; i < fuzzIters; i++ {
+		t.Logf(`About to test %v with ""`, kind)
+		fuzzInternalObject(t, "", item, seed)
+		roundTrip(t, osapi.Codec, item)
+		t.Logf(`About to test %v with "v1beta3"`, kind)
+		fuzzInternalObject(t, "v1beta3", item, seed)
+		roundTrip(t, v1beta3.Codec, item)
+		t.Logf(`About to test %v with "v1"`, kind)
+		fuzzInternalObject(t, "v1", item, seed)
+		roundTrip(t, v1.Codec, item)
+	}
 }
 
+// Keep this in sync with the respective upstream set
+var nonInternalRoundTrippableTypes = sets.NewString("List", "ListOptions", "PodExecOptions", "PodAttachOptions")
+
+// TestTypes will try to roundtrip all OpenShift and Kubernetes stable api types
 func TestTypes(t *testing.T) {
 	for kind, reflectType := range api.Scheme.KnownTypes("") {
-		if !strings.Contains(reflectType.PkgPath(), "/origin/") {
+		if !strings.Contains(reflectType.PkgPath(), "/origin/") && reflectType.PkgPath() != "k8s.io/kubernetes/pkg/api" {
 			continue
 		}
-		t.Logf("About to test %v", reflectType)
+		if nonInternalRoundTrippableTypes.Has(kind) {
+			continue
+		}
 		// Try a few times, since runTest uses random values.
 		for i := 0; i < fuzzIters; i++ {
 			item, err := api.Scheme.New("", kind)
@@ -415,15 +442,19 @@ func TestTypes(t *testing.T) {
 
 			if versions, ok := skipStandardVersions[kind]; ok {
 				for _, v := range versions {
-					fuzzInternalObject(t, "", item, seed)
+					t.Logf("About to test %v with %q", kind, v)
+					fuzzInternalObject(t, v, item, seed)
 					roundTrip(t, runtime.CodecFor(api.Scheme, v), item)
 				}
 				continue
 			}
+			t.Logf(`About to test %v with ""`, kind)
 			fuzzInternalObject(t, "", item, seed)
 			roundTrip(t, osapi.Codec, item)
+			t.Logf(`About to test %v with "v1beta3"`, kind)
 			fuzzInternalObject(t, "v1beta3", item, seed)
 			roundTrip(t, v1beta3.Codec, item)
+			t.Logf(`About to test %v with "v1"`, kind)
 			fuzzInternalObject(t, "v1", item, seed)
 			roundTrip(t, v1.Codec, item)
 		}

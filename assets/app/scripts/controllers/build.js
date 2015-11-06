@@ -12,8 +12,8 @@ angular.module('openshiftConsole')
     $scope.buildConfigName = $routeParams.buildconfig;
     $scope.builds = {};
     $scope.alerts = {};
-    $scope.renderOptions = $scope.renderOptions || {};    
-    $scope.renderOptions.hideFilterWidget = true;    
+    $scope.renderOptions = $scope.renderOptions || {};
+    $scope.renderOptions.hideFilterWidget = true;
     $scope.breadcrumbs = [
       {
         title: "Builds",
@@ -32,13 +32,24 @@ angular.module('openshiftConsole')
       title: $routeParams.build
     });
 
+    // Check for a ?tab=<name> query param to allow linking directly to a tab.
+    if ($routeParams.tab) {
+      $scope.selectedTab = {};
+      $scope.selectedTab[$routeParams.tab] = true;
+    }
+
     var watches = [];
 
     project.get($routeParams.project).then(function(resp) {
-      angular.extend($scope, {
+      var context = {
         project: resp[0],
         projectPromise: resp[1].projectPromise
-      });
+      };
+      angular.extend($scope, context);
+      // FIXME: DataService.createStream() requires a scope with a
+      // projectPromise rather than just a namespace, so we have to pass the
+      // context into the log-viewer directive.
+      $scope.logContext = context;
       DataService.get("builds", $routeParams.build, $scope).then(
         // success
         function(build) {
@@ -55,7 +66,7 @@ angular.module('openshiftConsole')
               $scope.alerts["deleted"] = {
                 type: "warning",
                 message: "This build has been deleted."
-              }; 
+              };
             }
             $scope.build = build;
           }));
@@ -101,7 +112,7 @@ angular.module('openshiftConsole')
           if (!$filter('isIncompleteBuild')(build)){
             delete $scope.buildConfigBuildsInProgress[buildConfigName][buildName];
           }
-        }        
+        }
       }));
     });
 

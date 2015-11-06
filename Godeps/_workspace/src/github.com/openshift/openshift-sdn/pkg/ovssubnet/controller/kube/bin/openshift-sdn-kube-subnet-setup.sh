@@ -25,47 +25,30 @@ function docker_network_config() {
 	DOCKER_NETWORK_OPTIONS="-b=lbr0 --mtu=${mtu}"
     fi
 
+    local conf=/run/openshift-sdn/docker-network
     case "$1" in
 	check)
-	    if [ -f /.dockerinit ]; then
-		# Assume supervisord-managed docker for docker-in-docker deployments
-		conf=/etc/supervisord.conf
-		if ! grep -q -s "DOCKER_DAEMON_ARGS=\"${DOCKER_NETWORK_OPTIONS}\"" $conf; then
-		    return 1
-		fi
-	    else
-		# Otherwise assume systemd-managed docker
-		conf=/run/openshift-sdn/docker-network
-		if ! grep -q -s "DOCKER_NETWORK_OPTIONS='${DOCKER_NETWORK_OPTIONS}'" $conf; then
-		    return 1
-		fi
+	    if ! grep -q -s "DOCKER_NETWORK_OPTIONS='${DOCKER_NETWORK_OPTIONS}'" $conf; then
+		return 1
 	    fi
 	    return 0
 	    ;;
 
 	update)
-	    if [ -f /.dockerinit ]; then
-		conf=/etc/supervisord.conf
-		if [ ! -f $conf ]; then
-		    echo "Running in docker but /etc/supervisord.conf not found." >&2
-		    exit 1
-		fi
-
-		echo "Docker networking options have changed; manual restart required." >&2
-		sed -i.bak -e \
-		    "s+\(DOCKER_DAEMON_ARGS=\)\"\"+\1\"${DOCKER_NETWORK_OPTIONS}\"+" \
-		    $conf
-	    else
-		mkdir -p /run/openshift-sdn
-		cat <<EOF > /run/openshift-sdn/docker-network
+		mkdir -p $(dirname $conf)
+		cat <<EOF > $conf
 # This file has been modified by openshift-sdn.
 
 DOCKER_NETWORK_OPTIONS='${DOCKER_NETWORK_OPTIONS}'
 EOF
+		## linux bridge
+		ip link set lbr0 down || true
+		brctl delbr lbr0 || true
+		brctl addbr lbr0
+		ip addr add ${local_subnet_gateway}/${local_subnet_mask_len} dev lbr0
+		ip link set lbr0 up
 
-		systemctl daemon-reload
-		systemctl restart docker.service
-
+	    if [ ! -f /.dockerinit ]; then
 		# disable iptables for lbr0
 		# for kernel version 3.18+, module br_netfilter needs to be loaded upfront
 		# for older ones, br_netfilter may not exist, but is covered by bridge (bridge-utils)
@@ -75,6 +58,11 @@ EOF
 		modprobe br_netfilter || true
 		sysctl -w net.bridge.bridge-nf-call-iptables=0
 	    fi
+		# when using --pid=host to run docker container, systemctl inside it refuses
+		# to work because it detects that it's running in chroot. using dbus instead
+		# of systemctl is just a workaround
+		dbus-send --system --print-reply --reply-timeout=2000 --type=method_call --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager.Reload
+		dbus-send --system --print-reply --reply-timeout=2000 --type=method_call --dest=org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager.RestartUnit string:'docker.service' string:'replace'
 	    ;;
     esac
 }
@@ -84,10 +72,33 @@ function setup_required() {
     if [ "$ip" != "${local_subnet_gateway}/${local_subnet_mask_len}" ]; then
         return 0
     fi
-    if ! docker_network_config check; then
+    if ! ovs-ofctl -O OpenFlow13 dump-flows br0 | grep -q 'table=0.*arp'; then
         return 0
     fi
     return 1
+}
+
+# Delete the subnet routing entry created because of ip link up on device
+# ip link adds local subnet route entry asynchronously
+# So check for the new route entry every 100 ms upto timeout of 2 secs and
+# delete the route entry.
+function delete_local_subnet_route() {
+    local device=$1
+    local time_interval=0.1  # 100 milli secs
+    local max_intervals=20   # timeout: 2 secs
+    local num_intervals=0
+    local cmd="ip route | grep -q '${local_subnet_cidr} dev ${device}'"
+
+    until $(eval $cmd) || [ $num_intervals -ge $max_intervals ]; do
+        sleep $time_interval
+        num_intervals=$((num_intervals + 1))
+    done
+
+    if [ $num_intervals -ge $max_intervals ]; then
+        echo "Error: ${local_subnet_cidr} route not found for dev ${device}" >&2
+        return 1
+    fi
+    ip route del ${local_subnet_cidr} dev ${device} proto kernel scope link
 }
 
 function setup() {
@@ -108,25 +119,15 @@ function setup() {
     ip link set vovsbr up
     ip link set vlinuxbr txqueuelen 0
     ip link set vovsbr txqueuelen 0
+    brctl addif lbr0 vlinuxbr
 
     ovs-vsctl del-port br0 vovsbr || true
     ovs-vsctl add-port br0 vovsbr -- set Interface vovsbr ofport_request=9
-
-    ## linux bridge
-    ip link set lbr0 down || true
-    brctl delbr lbr0 || true
-    brctl addbr lbr0
-    ip addr add ${local_subnet_gateway}/${local_subnet_mask_len} dev lbr0
-    ip link set lbr0 up
-    brctl addif lbr0 vlinuxbr
 
     # setup tun address
     ip addr add ${local_subnet_gateway}/${local_subnet_mask_len} dev ${TUN}
     ip link set ${TUN} up
     ip route add ${cluster_network_cidr} dev ${TUN} proto kernel scope link
-
-    ## docker
-    docker_network_config update
 
     # Cleanup docker0 since docker won't do it
     ip link set docker0 down || true
@@ -136,14 +137,19 @@ function setup() {
     sysctl -w net.ipv4.ip_forward=1
     sysctl -w net.ipv4.conf.${TUN}.forwarding=1
 
-    # delete the subnet routing entry created because of lbr0
-    ip route del ${local_subnet_cidr} dev lbr0 proto kernel scope link src ${local_subnet_gateway} || true
-
     mkdir -p /etc/openshift-sdn
     echo "export OPENSHIFT_CLUSTER_SUBNET=${cluster_network_cidr}" >> "/etc/openshift-sdn/config.env"
+
+    # delete unnecessary routes
+    delete_local_subnet_route lbr0 || true
+    delete_local_subnet_route ${TUN} || true
 }
 
 set +e
+if ! docker_network_config check; then
+  lockwrap docker_network_config update
+fi
+
 if ! setup_required; then
     echo "SDN setup not required."
     exit 140

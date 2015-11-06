@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"time"
 
 	"github.com/golang/glog"
@@ -35,14 +36,27 @@ type Tar interface {
 	// The name of the new tar file is returned if successful
 	CreateTarFile(base, dir string) (string, error)
 
+	// CreateTarStreamWithLogging creates a tar from the given directory
+	// and streams it to the given writer.
+	// An error is returned if an error occurs during streaming.
+	// Archived file names are written to the logger if provided
+	CreateTarStreamWithLogging(dir string, includeDirInPath bool, writer io.Writer, logger io.Writer) error
+
 	// CreateTarStream creates a tar from the given directory
-	// and streams it to the given writer
+	// and streams it to the given writer.
+	// An error is returned if an error occurs during streaming.
 	CreateTarStream(dir string, includeDirInPath bool, writer io.Writer) error
 
 	// ExtractTarStream extracts files from a given tar stream.
 	// Times out if reading from the stream for any given file
 	// exceeds the value of timeout
 	ExtractTarStream(dir string, reader io.Reader) error
+
+	// ExtractTarStreamWithLogging extracts files from a given tar stream.
+	// Times out if reading from the stream for any given file
+	// exceeds the value of timeout.
+	// Extracted file names are written to the logger if provided.
+	ExtractTarStreamWithLogging(dir string, reader io.Reader, logger io.Writer) error
 }
 
 // New creates a new Tar
@@ -84,17 +98,24 @@ func (t *stiTar) shouldExclude(path string) bool {
 	return t.exclude != nil && t.exclude.MatchString(path)
 }
 
-// CreateTarStream creates a tar stream on the given writer from
+// CreateTarStream calls CreateTarStreamWithLogging with a nil logger
+func (t *stiTar) CreateTarStream(dir string, includeDirInPath bool, writer io.Writer) error {
+	return t.CreateTarStreamWithLogging(dir, includeDirInPath, writer, nil)
+}
+
+// CreateTarStreamWithLogging creates a tar stream on the given writer from
 // the given directory while excluding files that match the given
 // exclusion pattern.
-func (t *stiTar) CreateTarStream(dir string, includeDirInPath bool, writer io.Writer) error {
+// TODO: this should encapsulate the goroutine that generates the stream.
+func (t *stiTar) CreateTarStreamWithLogging(dir string, includeDirInPath bool, writer io.Writer, logger io.Writer) error {
+	dir = filepath.Clean(dir) // remove relative paths and extraneous slashes
 	tarWriter := tar.NewWriter(writer)
 	defer tarWriter.Close()
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() && !t.shouldExclude(path) {
 			// if file is a link just writing header info is enough
 			if info.Mode()&os.ModeSymlink != 0 {
-				if err := t.writeTarHeader(tarWriter, dir, path, info, includeDirInPath); err != nil {
+				if err := t.writeTarHeader(tarWriter, dir, path, info, includeDirInPath, logger); err != nil {
 					glog.Errorf("	Error writing header for %s: %v", info.Name(), err)
 				}
 				return nil
@@ -107,7 +128,7 @@ func (t *stiTar) CreateTarStream(dir string, includeDirInPath bool, writer io.Wr
 				return nil
 			}
 			defer file.Close()
-			if err := t.writeTarHeader(tarWriter, dir, path, info, includeDirInPath); err != nil {
+			if err := t.writeTarHeader(tarWriter, dir, path, info, includeDirInPath, logger); err != nil {
 				glog.Errorf("Error writing header for %s: %v", info.Name(), err)
 				return nil
 			}
@@ -128,7 +149,7 @@ func (t *stiTar) CreateTarStream(dir string, includeDirInPath bool, writer io.Wr
 }
 
 // writeTarHeader writes tar header for given file, returns error if operation fails
-func (t *stiTar) writeTarHeader(tarWriter *tar.Writer, dir string, path string, info os.FileInfo, includeDirInPath bool) error {
+func (t *stiTar) writeTarHeader(tarWriter *tar.Writer, dir string, path string, info os.FileInfo, includeDirInPath bool, logger io.Writer) error {
 	var (
 		link string
 		err  error
@@ -147,8 +168,13 @@ func (t *stiTar) writeTarHeader(tarWriter *tar.Writer, dir string, path string, 
 	if includeDirInPath {
 		prefix = filepath.Dir(prefix)
 	}
-	header.Name = filepath.ToSlash(path[1+len(prefix):])
-	glog.V(3).Infof("Adding to tar: %s as %s", path, header.Name)
+	fileName := path
+	if prefix != "." {
+		fileName = path[1+len(prefix):]
+	}
+	header.Name = filepath.ToSlash(fileName)
+	logFile(logger, header.Name)
+	glog.V(5).Infof("Adding to tar: %s as %s", path, header.Name)
 	if err = tarWriter.WriteHeader(header); err != nil {
 		return err
 	}
@@ -156,10 +182,15 @@ func (t *stiTar) writeTarHeader(tarWriter *tar.Writer, dir string, path string, 
 	return nil
 }
 
-// ExtractTarStream extracts files from a given tar stream.
+// ExtractTarStream calls ExtractTarStreamWithLogging with a nil logger
+func (t *stiTar) ExtractTarStream(dir string, reader io.Reader) error {
+	return t.ExtractTarStreamWithLogging(dir, reader, nil)
+}
+
+// ExtractTarStreamWithLogging extracts files from a given tar stream.
 // Times out if reading from the stream for any given file
 // exceeds the value of timeout
-func (t *stiTar) ExtractTarStream(dir string, reader io.Reader) error {
+func (t *stiTar) ExtractTarStreamWithLogging(dir string, reader io.Reader, logger io.Writer) error {
 	tarReader := tar.NewReader(reader)
 	errorChannel := make(chan error)
 	timeout := t.timeout
@@ -180,7 +211,7 @@ func (t *stiTar) ExtractTarStream(dir string, reader io.Reader) error {
 			if header.FileInfo().IsDir() {
 				dirPath := filepath.Join(dir, header.Name)
 				if err = os.MkdirAll(dirPath, 0700); err != nil {
-					glog.Errorf("Error creating dir %s: %v", dirPath, err)
+					glog.Errorf("Error creating dir %q: %v", dirPath, err)
 					errorChannel <- err
 					break
 				}
@@ -188,13 +219,23 @@ func (t *stiTar) ExtractTarStream(dir string, reader io.Reader) error {
 				fileDir := filepath.Dir(header.Name)
 				dirPath := filepath.Join(dir, fileDir)
 				if err = os.MkdirAll(dirPath, 0700); err != nil {
-					glog.Errorf("Error creating dir %s: %v", dirPath, err)
+					glog.Errorf("Error creating dir %q: %v", dirPath, err)
 					errorChannel <- err
 					break
 				}
+				if header.Mode&tar.TypeSymlink == tar.TypeSymlink {
+					if err := extractLink(dir, header, tarReader); err != nil {
+						glog.Errorf("Error extracting link %q: %v", header.Name, err)
+						errorChannel <- err
+						break
+					}
+					continue
+				}
+				logFile(logger, header.Name)
 				if err := extractFile(dir, header, tarReader); err != nil {
-					glog.Errorf("Error extracting file %s: %v", header.Name, err)
+					glog.Errorf("Error extracting file %q: %v", header.Name, err)
 					errorChannel <- err
+					break
 				}
 			}
 		}
@@ -213,6 +254,16 @@ func (t *stiTar) ExtractTarStream(dir string, reader io.Reader) error {
 			return errors.NewTarTimeoutError()
 		}
 	}
+}
+
+func extractLink(dir string, header *tar.Header, tarReader io.Reader) error {
+	dest := filepath.Join(dir, header.Name)
+	source := header.Linkname
+
+	glog.V(3).Infof("Creating symbolic link from %q to %q", dest, source)
+
+	// TODO: set mtime for symlink (unfortunately we can't use os.Chtimes() and probably should use syscall)
+	return os.Symlink(source, dest)
 }
 
 func extractFile(dir string, header *tar.Header, tarReader io.Reader) error {
@@ -235,10 +286,15 @@ func extractFile(dir string, header *tar.Header, tarReader io.Reader) error {
 	if written != header.Size {
 		return fmt.Errorf("Wrote %d bytes, expected to write %d", written, header.Size)
 	}
-	if err = file.Chmod(header.FileInfo().Mode()); err != nil {
-		return err
+	if runtime.GOOS != "windows" { // Skip chmod if on windows OS
+		return file.Chmod(header.FileInfo().Mode())
 	}
-
-	glog.V(3).Infof("Done with %s", path)
 	return nil
+}
+
+func logFile(logger io.Writer, name string) {
+	if logger == nil {
+		return
+	}
+	fmt.Fprintf(logger, "%s\n", name)
 }

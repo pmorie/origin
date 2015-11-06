@@ -1,9 +1,13 @@
 package api
 
 import (
-	"k8s.io/kubernetes/pkg/api"
+	"reflect"
+
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
+
+	"github.com/openshift/origin/pkg/api/latest"
 )
 
 // A new entry shall be added to FeatureAliases for every change to following values.
@@ -11,15 +15,40 @@ const (
 	FeatureBuilder    = `Builder`
 	FeatureS2I        = `S2IBuilder`
 	FeatureWebConsole = `WebConsole`
+
+	AllVersions = "*"
 )
 
 var (
 	KnownKubernetesAPILevels   = []string{"v1beta1", "v1beta2", "v1beta3", "v1"}
 	KnownOpenShiftAPILevels    = []string{"v1beta1", "v1beta3", "v1"}
-	DefaultKubernetesAPILevels = []string{"v1beta3", "v1"}
-	DefaultOpenShiftAPILevels  = []string{"v1beta3", "v1"}
-	DeadKubernetesAPILevels    = []string{"v1beta1", "v1beta2"}
-	DeadOpenShiftAPILevels     = []string{"v1beta1"}
+	DefaultKubernetesAPILevels = []string{"v1"}
+	DefaultOpenShiftAPILevels  = []string{"v1"}
+	DeadKubernetesAPILevels    = []string{"v1beta1", "v1beta2", "v1beta3"}
+	DeadOpenShiftAPILevels     = []string{"v1beta1", "v1beta3"}
+	// KnownKubernetesStorageVersionLevels are storage versions that can be
+	// dealt with internally.
+	KnownKubernetesStorageVersionLevels = []string{"v1", "v1beta3"}
+	// KnownOpenShiftStorageVersionLevels are storage versions that can be dealt
+	// with internally
+	KnownOpenShiftStorageVersionLevels = latest.Versions
+	// DefaultOpenShiftStorageVersionLevel is the default storage version for
+	// resources.
+	DefaultOpenShiftStorageVersionLevel = latest.Versions[0]
+	// DeadKubernetesStorageVersionLevels are storage versions which shouldn't
+	// be exposed externally.
+	DeadKubernetesStorageVersionLevels = []string{"v1beta3"}
+	// DeadOpenShiftStorageVersionLevels are storage versions which shouldn't be
+	// exposed externally.
+	DeadOpenShiftStorageVersionLevels = []string{"v1beta1", "v1beta3"}
+
+	APIGroupKube                   = ""
+	APIGroupExtensions             = "extensions"
+	KubeAPIGroupsToAllowedVersions = map[string][]string{
+		APIGroupKube:       {"v1"},
+		APIGroupExtensions: {"v1beta1"},
+	}
+	KnownKubeAPIGroups = sets.KeySet(reflect.ValueOf(KubeAPIGroupsToAllowedVersions))
 
 	// FeatureAliases maps deprecated names of feature flag to their canonical
 	// names. Aliases must be lower-cased for O(1) lookup.
@@ -35,7 +64,7 @@ type ExtendedArguments map[string][]string
 
 // NodeConfig is the fully specified config starting an OpenShift node
 type NodeConfig struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// NodeName is the value used to identify this particular node in the cluster.  If possible, this should be your fully qualified hostname.
 	// If you're describing a set of static nodes to the master, this value must match one of the values in the list
@@ -137,7 +166,7 @@ const (
 type FeatureList []string
 
 type MasterConfig struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// ServingInfo describes how to start serving
 	ServingInfo HTTPServingInfo
@@ -492,7 +521,7 @@ type SessionConfig struct {
 
 // SessionSecrets list the secrets to use to sign/encrypt and authenticate/decrypt created sessions.
 type SessionSecrets struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// Secrets is a list of secrets
 	// New sessions are signed and encrypted using the first secret.
@@ -514,34 +543,36 @@ type IdentityProvider struct {
 	UseAsChallenger bool
 	// UseAsLogin indicates whether to use this identity provider for unauthenticated browsers to login against
 	UseAsLogin bool
+	// MappingMethod determines how identities from this provider are mapped to users
+	MappingMethod string
 	// Provider contains the information about how to set up a specific identity provider
 	Provider runtime.EmbeddedObject
 }
 
 type BasicAuthPasswordIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// RemoteConnectionInfo contains information about how to connect to the external basic auth server
 	RemoteConnectionInfo RemoteConnectionInfo
 }
 
 type AllowAllPasswordIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 }
 
 type DenyAllPasswordIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 }
 
 type HTPasswdPasswordIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// File is a reference to your htpasswd file
 	File string
 }
 
 type LDAPPasswordIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 	// URL is an RFC 2255 URL which specifies the LDAP search parameters to use. The syntax of the URL is
 	//    ldap://host:port/basedn?attribute?scope?filter
 	URL string
@@ -576,8 +607,16 @@ type LDAPAttributeMapping struct {
 	Email []string
 }
 
+type KeystonePasswordIdentityProvider struct {
+	unversioned.TypeMeta
+	// RemoteConnectionInfo contains information about how to connect to the keystone server
+	RemoteConnectionInfo RemoteConnectionInfo
+	// Domain Name is required for keystone v3
+	DomainName string
+}
+
 type RequestHeaderIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// LoginURL is a URL to redirect unauthenticated /authorize requests to
 	// Unauthenticated requests from OAuth clients which expect interactive logins will be redirected here
@@ -602,7 +641,7 @@ type RequestHeaderIdentityProvider struct {
 }
 
 type GitHubIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// ClientID is the oauth client ID
 	ClientID string
@@ -611,7 +650,7 @@ type GitHubIdentityProvider struct {
 }
 
 type GoogleIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// ClientID is the oauth client ID
 	ClientID string
@@ -623,7 +662,7 @@ type GoogleIdentityProvider struct {
 }
 
 type OpenIDIdentityProvider struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// CA is the optional trusted certificate authority bundle to use when making requests to the server
 	// If empty, the default system roots are used
@@ -705,8 +744,9 @@ type EtcdConfig struct {
 }
 
 type KubernetesMasterConfig struct {
-	// APILevels is a list of API levels that should be enabled on startup: v1beta3 and v1 as examples
-	APILevels []string
+	// DisabledAPIGroupVersions is a map of groups to the versions (or *) that should be disabled.
+	DisabledAPIGroupVersions map[string][]string
+
 	// MasterIP is the public IP address of kubernetes stuff.  If empty, the first result from net.InterfaceAddrs will be used.
 	MasterIP string
 	// MasterCount is the number of expected masters that should be running. This value defaults to 1 and may be set to a positive integer,
@@ -769,7 +809,7 @@ type AssetExtensionsConfig struct {
 }
 
 type LDAPSyncConfig struct {
-	api.TypeMeta
+	unversioned.TypeMeta
 
 	// URL is the scheme, host and port of the LDAP server to connect to: scheme://host:port
 	URL string

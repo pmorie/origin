@@ -26,6 +26,8 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/rest"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
@@ -152,6 +154,7 @@ func (t *Tester) TestCreate(valid runtime.Object, setFn SetFunc, getFn GetFunc, 
 		t.testCreateRejectsMismatchedNamespace(copyOrDie(valid))
 	}
 	t.testCreateInvokesValidation(invalid...)
+	t.testCreateValidatesNames(copyOrDie(valid))
 }
 
 // Test updating an object.
@@ -345,6 +348,32 @@ func (t *Tester) testCreateIgnoresMismatchedNamespace(valid runtime.Object) {
 	}
 }
 
+func (t *Tester) testCreateValidatesNames(valid runtime.Object) {
+	for _, invalidName := range validation.NameMayNotBe {
+		objCopy := copyOrDie(valid)
+		objCopyMeta := t.getObjectMetaOrFail(objCopy)
+		objCopyMeta.Name = invalidName
+
+		ctx := t.TestContext()
+		_, err := t.storage.(rest.Creater).Create(ctx, objCopy)
+		if !errors.IsInvalid(err) {
+			t.Errorf("%s: Expected to get an invalid resource error, got %v", invalidName, err)
+		}
+	}
+
+	for _, invalidSuffix := range validation.NameMayNotContain {
+		objCopy := copyOrDie(valid)
+		objCopyMeta := t.getObjectMetaOrFail(objCopy)
+		objCopyMeta.Name += invalidSuffix
+
+		ctx := t.TestContext()
+		_, err := t.storage.(rest.Creater).Create(ctx, objCopy)
+		if !errors.IsInvalid(err) {
+			t.Errorf("%s: Expected to get an invalid resource error, got %v", invalidSuffix, err)
+		}
+	}
+}
+
 func (t *Tester) testCreateInvokesValidation(invalid ...runtime.Object) {
 	for i, obj := range invalid {
 		ctx := t.TestContext()
@@ -369,7 +398,7 @@ func (t *Tester) testCreateRejectsMismatchedNamespace(valid runtime.Object) {
 
 func (t *Tester) testCreateResetsUserData(valid runtime.Object) {
 	objectMeta := t.getObjectMetaOrFail(valid)
-	now := util.Now()
+	now := unversioned.Now()
 	objectMeta.UID = "bad-uid"
 	objectMeta.CreationTimestamp = now
 
@@ -527,9 +556,9 @@ func (t *Tester) testDeleteNoGraceful(obj runtime.Object, setFn SetFunc, getFn G
 		t.Errorf("unexpected error: %v", err)
 	}
 	if !t.returnDeletedObject {
-		if status, ok := obj.(*api.Status); !ok {
+		if status, ok := obj.(*unversioned.Status); !ok {
 			t.Errorf("expected status of delete, got %v", status)
-		} else if status.Status != api.StatusSuccess {
+		} else if status.Status != unversioned.StatusSuccess {
 			t.Errorf("expected success, got: %v", status.Status)
 		}
 	}
@@ -961,7 +990,7 @@ func (t *Tester) testWatchFields(obj runtime.Object, initWatchFn InitWatchFunc, 
 				if !ok {
 					t.Errorf("watch channel should be open")
 				}
-			case <-time.After(time.Millisecond * 100):
+			case <-time.After(util.ForeverTestTimeout):
 				t.Errorf("unexpected timeout from result channel")
 			}
 			watcher.Stop()
@@ -982,7 +1011,7 @@ func (t *Tester) testWatchFields(obj runtime.Object, initWatchFn InitWatchFunc, 
 			select {
 			case <-watcher.ResultChan():
 				t.Errorf("unexpected result from result channel")
-			case <-time.After(time.Millisecond * 100):
+			case <-time.After(time.Millisecond * 500):
 				// expected case
 			}
 			watcher.Stop()
@@ -1009,7 +1038,7 @@ func (t *Tester) testWatchLabels(obj runtime.Object, initWatchFn InitWatchFunc, 
 				if !ok {
 					t.Errorf("watch channel should be open")
 				}
-			case <-time.After(time.Millisecond * 100):
+			case <-time.After(util.ForeverTestTimeout):
 				t.Errorf("unexpected timeout from result channel")
 			}
 			watcher.Stop()
@@ -1030,7 +1059,7 @@ func (t *Tester) testWatchLabels(obj runtime.Object, initWatchFn InitWatchFunc, 
 			select {
 			case <-watcher.ResultChan():
 				t.Errorf("unexpected result from result channel")
-			case <-time.After(time.Millisecond * 100):
+			case <-time.After(time.Millisecond * 500):
 				// expected case
 			}
 			watcher.Stop()

@@ -7,12 +7,12 @@ import (
 	"github.com/golang/glog"
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/auth/user"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/generic"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/fielderrors"
 	"k8s.io/kubernetes/pkg/util/sets"
 
@@ -89,13 +89,9 @@ func (Strategy) AllowUnconditionalUpdate() bool {
 // if a default registry exists, the value returned is of the form
 // <default registry>/<namespace>/<stream name>.
 func (s Strategy) dockerImageRepository(stream *api.ImageStream) string {
-	if len(stream.Spec.DockerImageRepository) != 0 {
-		return stream.Spec.DockerImageRepository
-	}
-
 	registry, ok := s.defaultRegistry.DefaultRegistry()
 	if !ok {
-		return ""
+		return stream.Spec.DockerImageRepository
 	}
 
 	if len(stream.Namespace) == 0 {
@@ -157,12 +153,14 @@ func (s Strategy) tagsChanged(old, stream *api.ImageStream) fielderrors.Validati
 		}
 
 		if tagRef.From.Kind == "DockerImage" && len(tagRef.From.Name) > 0 {
-			event, err := tagReferenceToTagEvent(stream, tagRef, "")
-			if err != nil {
-				errs = append(errs, fielderrors.NewFieldInvalid(fmt.Sprintf("spec.tags[%s].from", tag), tagRef.From, err.Error()))
-				continue
+			if tagRef.Reference {
+				event, err := tagReferenceToTagEvent(stream, tagRef, "")
+				if err != nil {
+					errs = append(errs, fielderrors.NewFieldInvalid(fmt.Sprintf("spec.tags[%s].from", tag), tagRef.From, err.Error()))
+					continue
+				}
+				api.AddTagEventToImageStream(stream, tag, *event)
 			}
-			api.AddTagEventToImageStream(stream, tag, *event)
 			continue
 		}
 
@@ -180,7 +178,11 @@ func (s Strategy) tagsChanged(old, stream *api.ImageStream) fielderrors.Validati
 		if streamRefNamespace != stream.Namespace || tagRefStreamName != stream.Name {
 			obj, err := s.ImageStreamGetter.Get(kapi.WithNamespace(kapi.NewContext(), streamRefNamespace), tagRefStreamName)
 			if err != nil {
-				errs = append(errs, fielderrors.NewFieldInvalid(fmt.Sprintf("spec.tags[%s].from.name", tag), tagRef.From.Name, fmt.Sprintf("error retrieving ImageStream %s/%s: %v", streamRefNamespace, tagRefStreamName, err)))
+				if kerrors.IsNotFound(err) {
+					errs = append(errs, fielderrors.NewFieldNotFound(fmt.Sprintf("spec.tags[%s].from.name", tag), tagRef.From.Name))
+				} else {
+					errs = append(errs, fielderrors.NewFieldInvalid(fmt.Sprintf("spec.tags[%s].from.name", tag), tagRef.From.Name, fmt.Sprintf("unable to retrieve image stream: %v", err)))
+				}
 				continue
 			}
 
@@ -201,6 +203,10 @@ func (s Strategy) tagsChanged(old, stream *api.ImageStream) fielderrors.Validati
 		api.AddTagEventToImageStream(stream, tag, *event)
 	}
 
+	if old != nil {
+		api.UpdateChangedTrackingTags(stream, old)
+	}
+
 	// use a consistent timestamp on creation
 	if old == nil && !stream.CreationTimestamp.IsZero() {
 		for tag, list := range stream.Status.Tags {
@@ -218,7 +224,7 @@ func tagReferenceToTagEvent(stream *api.ImageStream, tagRef api.TagReference, ta
 	switch tagRef.From.Kind {
 	case "DockerImage":
 		return &api.TagEvent{
-			Created:              util.Now(),
+			Created:              unversioned.Now(),
 			DockerImageReference: tagRef.From.Name,
 		}, nil
 
@@ -233,7 +239,7 @@ func tagReferenceToTagEvent(stream *api.ImageStream, tagRef api.TagReference, ta
 		case 1:
 			ref.ID = resolvedIDs.List()[0]
 			return &api.TagEvent{
-				Created:              util.Now(),
+				Created:              unversioned.Now(),
 				DockerImageReference: ref.String(),
 				Image:                ref.ID,
 			}, nil
@@ -319,7 +325,7 @@ func (v *TagVerifier) Verify(old, stream *api.ImageStream, user user.Info) field
 			Groups: sets.NewString(user.GetGroups()...),
 		}
 		ctx := kapi.WithNamespace(kapi.NewContext(), tagRef.From.Namespace)
-		glog.V(1).Infof("Performing SubjectAccessReview for user=%s, groups=%v to %s/%s", user.GetName(), user.GetGroups(), tagRef.From.Namespace, streamName)
+		glog.V(4).Infof("Performing SubjectAccessReview for user=%s, groups=%v to %s/%s", user.GetName(), user.GetGroups(), tagRef.From.Namespace, streamName)
 		resp, err := v.subjectAccessReviewClient.CreateSubjectAccessReview(ctx, &subjectAccessReview)
 		if err != nil || resp == nil || (resp != nil && !resp.Allowed) {
 			errors = append(errors, fielderrors.NewFieldForbidden(fmt.Sprintf("spec.tags[%s].from", tag), fmt.Sprintf("%s/%s", tagRef.From.Namespace, streamName)))
@@ -391,18 +397,9 @@ func MatchImageStream(label labels.Selector, field fields.Selector) generic.Matc
 		if !ok {
 			return false, fmt.Errorf("not an ImageStream")
 		}
-		fields := ImageStreamToSelectableFields(ir)
+		fields := api.ImageStreamToSelectableFields(ir)
 		return label.Matches(labels.Set(ir.Labels)) && field.Matches(fields), nil
 	})
-}
-
-// ImageStreamToSelectableFields returns a label set that represents the object.
-func ImageStreamToSelectableFields(ir *api.ImageStream) labels.Set {
-	return labels.Set{
-		"metadata.name":                ir.Name,
-		"spec.dockerImageRepository":   ir.Spec.DockerImageRepository,
-		"status.dockerImageRepository": ir.Status.DockerImageRepository,
-	}
 }
 
 // DefaultRegistry returns the default Docker registry (host or host:port), or false if it is not available.
@@ -416,4 +413,27 @@ type DefaultRegistryFunc func() (string, bool)
 // DefaultRegistry implements the DefaultRegistry interface for a function.
 func (fn DefaultRegistryFunc) DefaultRegistry() (string, bool) {
 	return fn()
+}
+
+// InternalStrategy implements behavior for updating both the spec and status
+// of an image stream
+type InternalStrategy struct {
+	Strategy
+}
+
+// NewInternalStrategy creates an update strategy around an existing stream
+// strategy.
+func NewInternalStrategy(strategy Strategy) InternalStrategy {
+	return InternalStrategy{strategy}
+}
+
+func (InternalStrategy) PrepareForUpdate(obj, old runtime.Object) {
+}
+
+func (InternalStrategy) AllowUnconditionalUpdate() bool {
+	return false
+}
+
+func (InternalStrategy) ValidateUpdate(ctx kapi.Context, obj, old runtime.Object) fielderrors.ValidationErrorList {
+	return validation.ValidateImageStreamUpdate(obj.(*api.ImageStream), old.(*api.ImageStream))
 }

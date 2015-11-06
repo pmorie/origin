@@ -127,14 +127,18 @@ func RunReplace(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []st
 		if err != nil {
 			return err
 		}
-		data, err := info.Mapping.Codec.Encode(info.Object)
+
+		// Serialize the configuration into an annotation.
+		if err := kubectl.UpdateApplyAnnotation(info); err != nil {
+			return err
+		}
+
+		// Serialize the object with the annotation applied.
+		obj, err := resource.NewHelper(info.Client, info.Mapping).Replace(info.Namespace, info.Name, true, info.Object)
 		if err != nil {
 			return cmdutil.AddSourceToErr("replacing", info.Source, err)
 		}
-		obj, err := resource.NewHelper(info.Client, info.Mapping).Replace(info.Namespace, info.Name, true, data)
-		if err != nil {
-			return cmdutil.AddSourceToErr("replacing", info.Source, err)
-		}
+
 		info.Refresh(obj, true)
 		printObjectSpecificMessage(obj, out)
 		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, "replaced")
@@ -211,14 +215,17 @@ func forceReplace(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []
 		if err != nil {
 			return err
 		}
-		data, err := info.Mapping.Codec.Encode(info.Object)
+
+		// Serialize the configuration into an annotation.
+		if err := kubectl.UpdateApplyAnnotation(info); err != nil {
+			return err
+		}
+
+		obj, err := resource.NewHelper(info.Client, info.Mapping).Create(info.Namespace, true, info.Object)
 		if err != nil {
 			return err
 		}
-		obj, err := resource.NewHelper(info.Client, info.Mapping).Create(info.Namespace, true, data)
-		if err != nil {
-			return err
-		}
+
 		count++
 		info.Refresh(obj, true)
 		printObjectSpecificMessage(obj, out)

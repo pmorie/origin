@@ -2,12 +2,12 @@ package factory
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/golang/glog"
+	"time"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
@@ -25,6 +25,7 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	controller "github.com/openshift/origin/pkg/controller"
 	imageapi "github.com/openshift/origin/pkg/image/api"
+	errors "github.com/openshift/origin/pkg/util/errors"
 )
 
 const maxRetries = 60
@@ -38,8 +39,9 @@ func limitedLogAndRetry(buildupdater buildclient.BuildUpdater, maxTimeout time.D
 			return true
 		}
 		build.Status.Phase = buildapi.BuildPhaseFailed
-		build.Status.Message = err.Error()
-		now := kutil.Now()
+		build.Status.Reason = buildapi.StatusReasonExceededRetryTimeout
+		build.Status.Message = errors.ErrorToSentence(err)
+		now := unversioned.Now()
 		build.Status.CompletionTimestamp = &now
 		glog.V(3).Infof("Giving up retrying Build %s/%s: %v", build.Namespace, build.Name, err)
 		kutil.HandleError(err)
@@ -95,11 +97,18 @@ func (factory *BuildControllerFactory) Create() controller.RunnableController {
 			build := obj.(*buildapi.Build)
 			err := buildController.HandleBuild(build)
 			if err != nil {
-				build.Status.Message = err.Error()
-				if err := buildController.BuildUpdater.Update(build.Namespace, build); err != nil {
-					glog.V(2).Infof("Failed to update status message of Build %s/%s: %v", build.Namespace, build.Name, err)
+				// Update the build status message only if it changed.
+				if msg := errors.ErrorToSentence(err); build.Status.Message != msg {
+					// Set default Reason.
+					if len(build.Status.Reason) == 0 {
+						build.Status.Reason = buildapi.StatusReasonError
+					}
+					build.Status.Message = msg
+					if err := buildController.BuildUpdater.Update(build.Namespace, build); err != nil {
+						glog.V(2).Infof("Failed to update status message of Build %s/%s: %v", build.Namespace, build.Name, err)
+					}
+					buildController.Recorder.Eventf(build, "HandleBuildError", "Build has error: %v", err)
 				}
-				buildController.Recorder.Eventf(build, "HandleBuildError", "Build %s/%s has error: %v", build.Namespace, build.Name, err)
 			}
 			return err
 		},
@@ -374,16 +383,6 @@ func listPods(client kclient.Interface) (*kapi.PodList, error) {
 	if err != nil {
 		return nil, err
 	}
-	// FIXME: get builds with old label - remove this when depracated label will be removed
-	selOld, err := labels.Parse(buildapi.DeprecatedBuildLabel)
-	if err != nil {
-		return nil, err
-	}
-	listOld, err := client.Pods(kapi.NamespaceAll).List(selOld, fields.Everything())
-	if err != nil {
-		return nil, err
-	}
-	listNew.Items = mergeWithoutDuplicates(listNew.Items, listOld.Items)
 	return listNew, nil
 }
 
@@ -442,8 +441,8 @@ func (lw *buildDeleteLW) List() (runtime.Object, error) {
 	}
 
 	for _, pod := range podList.Items {
-		buildName, exists := buildutil.GetBuildLabel(&pod)
-		if !exists {
+		buildName := pod.Labels[buildapi.BuildLabel]
+		if len(buildName) == 0 {
 			continue
 		}
 		glog.V(5).Infof("Found build pod %s/%s", pod.Namespace, pod.Name)
@@ -540,7 +539,7 @@ func (lw *buildPodDeleteLW) List() (runtime.Object, error) {
 				pod = nil
 			}
 		} else {
-			if buildName, _ := buildutil.GetBuildLabel(pod); buildName != build.Name {
+			if buildName := pod.Labels[buildapi.BuildLabel]; buildName != build.Name {
 				pod = nil
 			}
 		}

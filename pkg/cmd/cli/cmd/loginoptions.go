@@ -128,7 +128,7 @@ func (o *LoginOptions) getClientConfig() (*kclient.Config, error) {
 		return nil, err
 	}
 
-	result := osClient.Get().AbsPath("/osapi").Do()
+	result := osClient.Get().AbsPath("/").Do()
 	if result.Error() != nil {
 		switch {
 		case o.InsecureTLS:
@@ -222,8 +222,9 @@ func (o *LoginOptions) gatherAuthInfo() error {
 		}
 	}
 
-	// if a username was provided try to make use of it
-	if o.usernameProvided() {
+	// if a username was provided try to make use of it, but if a password were provided we force a token
+	// request which will return a proper response code for that given password
+	if o.usernameProvided() && !o.passwordProvided() {
 		// search all valid contexts with matching server stanzas to see if we have a matching user stanza
 		kubeconfig := *o.StartingKubeConfig
 		matchingClusters := getMatchingClusters(*clientConfig, kubeconfig)
@@ -336,14 +337,13 @@ func (o *LoginOptions) gatherProjectInfo() error {
 			}
 		}
 
-		if current, err := oClient.Projects().Get(namespace); err == nil {
-			o.Project = current.Name
-			fmt.Fprintf(o.Out, "Using project %q.\n", o.Project)
-		} else if !kerrors.IsNotFound(err) && !clientcmd.IsForbidden(err) {
+		current, err := oClient.Projects().Get(namespace)
+		if err != nil && !kerrors.IsNotFound(err) && !clientcmd.IsForbidden(err) {
 			return err
 		}
+		o.Project = current.Name
 
-		fmt.Fprintf(o.Out, "\nYou have access to the following projects and can switch between them with 'oc project <projectname>':\n\n")
+		fmt.Fprintf(o.Out, "You have access to the following projects and can switch between them with 'oc project <projectname>':\n\n")
 		for _, p := range projects.List() {
 			if o.Project == p {
 				fmt.Fprintf(o.Out, "  * %s (current)\n", p)
@@ -352,6 +352,7 @@ func (o *LoginOptions) gatherProjectInfo() error {
 			}
 		}
 		fmt.Fprintln(o.Out)
+		fmt.Fprintf(o.Out, "Using project %q.\n", o.Project)
 	}
 
 	return nil
@@ -425,6 +426,10 @@ func (o LoginOptions) whoAmI() (*api.User, error) {
 
 func (o *LoginOptions) usernameProvided() bool {
 	return len(o.Username) > 0
+}
+
+func (o *LoginOptions) passwordProvided() bool {
+	return len(o.Password) > 0
 }
 
 func (o *LoginOptions) serverProvided() bool {

@@ -10,7 +10,8 @@ angular.module("openshiftConsole")
       ApplicationGenerator,
       TaskList,
       failureObjectNameFilter,
-      $filter
+      $filter,
+      $parse
     ){
     var displayNameFilter = $filter('displayName');
 
@@ -39,7 +40,8 @@ angular.module("openshiftConsole")
         }
       };
       scope.routing = {
-        include: true
+        include: true,
+        portOptions: []
       };
       scope.labels = {};
       scope.annotations = {};
@@ -59,15 +61,23 @@ angular.module("openshiftConsole")
         scope.buildConfig.contextDir = annotations.sampleContextDir || "";
       };
 
-      DataService.get("imagestreams", scope.imageName, scope, {namespace: scope.namespace}).then(function(imageStream){
+      DataService.get("imagestreams", scope.imageName, {namespace: (scope.namespace || $routeParams.project)}).then(function(imageStream){
           scope.imageStream = imageStream;
           var imageName = scope.imageTag;
           DataService.get("imagestreamtags", imageStream.metadata.name + ":" + imageName, {namespace: scope.namespace}).then(function(imageStreamTag){
               scope.image = imageStreamTag.image;
-              angular.forEach(imageStreamTag.image.dockerImageMetadata.ContainerConfig.Env, function(entry){
+              var env = $parse('dockerImageMetadata.ContainerConfig.Env')(imageStreamTag.image) || [];
+              angular.forEach(env, function(entry){
                 var pair = entry.split("=");
                 scope.deploymentConfig.envVars[pair[0]] = pair[1];
               });
+
+              scope.routing.portOptions = ApplicationGenerator.parsePorts(imageStreamTag.image);
+              if (scope.routing.portOptions.length){
+                scope.routing.targetPort = scope.routing.portOptions[0];
+              } else {
+                scope.routing.include = false;
+              }
             }, function(){
                 Navigate.toErrorPage("Cannot create from source: the specified image could not be retrieved.");
               }
@@ -108,7 +118,7 @@ angular.module("openshiftConsole")
           _checkDone();
           return;
         }
-        DataService.get(resourceName, resource.metadata.name, scope, {namespace: namespace, errorNotification: false}).then(
+        DataService.get(resourceName, resource.metadata.name, {namespace: (namespace || $routeParams.project)}, {errorNotification: false}).then(
           function (data) {
             successResults.push(data);
             remaining--;
@@ -183,6 +193,7 @@ angular.module("openshiftConsole")
 
     var elseShowWarning = function(){
       $scope.nameTaken = true;
+      $scope.disableInputs = false;
     };
 
     $scope.projectDisplayName = function() {
@@ -190,6 +201,7 @@ angular.module("openshiftConsole")
     };
 
     $scope.createApp = function(){
+      $scope.disableInputs = true;
       var resourceMap = ApplicationGenerator.generate($scope);
       //init tasks
       var resources = [];

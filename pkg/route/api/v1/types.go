@@ -1,14 +1,15 @@
 package v1
 
 import (
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/util"
 )
 
 // Route encapsulates the inputs needed to connect an alias to endpoints.
 type Route struct {
-	kapi.TypeMeta   `json:",inline"`
-	kapi.ObjectMeta `json:"metadata,omitempty"`
+	unversioned.TypeMeta `json:",inline"`
+	kapi.ObjectMeta      `json:"metadata,omitempty"`
 
 	// Spec is the desired state of the route
 	Spec RouteSpec `json:"spec" description:"desired state of the route"`
@@ -18,8 +19,8 @@ type Route struct {
 
 // RouteList is a collection of Routes.
 type RouteList struct {
-	kapi.TypeMeta `json:",inline"`
-	kapi.ListMeta `json:"metadata,omitempty"`
+	unversioned.TypeMeta `json:",inline"`
+	unversioned.ListMeta `json:"metadata,omitempty"`
 
 	// Items is a list of routes
 	Items []Route `json:"items" description:"list of routes"`
@@ -93,10 +94,19 @@ type TLSConfig struct {
 	// DestinationCACertificate provides the contents of the ca certificate of the final destination.  When using reencrypt
 	// termination this file should be provided in order to have routers use it for health checks on the secure connection
 	DestinationCACertificate string `json:"destinationCACertificate,omitempty" description:"provides the contents of the ca certificate of the final destination.  When using re-encrypt termination this file should be provided in order to have routers use it for health checks on the secure connection"`
+
+	// InsecureEdgeTerminationPolicy indicates the desired behavior for
+	// insecure connections to an edge-terminated route:
+	//   disable, allow or redirect
+	InsecureEdgeTerminationPolicy InsecureEdgeTerminationPolicyType `json:"insecureEdgeTerminationPolicy,omitempty" description:"indicates desired behavior for insecure connections to an edge-terminated route.  If not set, insecure connections will not be allowed"`
 }
 
 // TLSTerminationType dictates where the secure communication will stop
 type TLSTerminationType string
+
+// InsecureEdgeTerminationPolicyType dictates the behavior of insecure
+// connections to an edge-terminated route.
+type InsecureEdgeTerminationPolicyType string
 
 const (
 	// TLSTerminationEdge terminate encryption at the edge router.

@@ -21,13 +21,14 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/davecgh/go-spew/spew"
@@ -67,7 +68,7 @@ var Semantic = conversion.EqualitiesOrDie(
 		}
 		return a.Amount.Cmp(b.Amount) == 0
 	},
-	func(a, b util.Time) bool {
+	func(a, b unversioned.Time) bool {
 		return a.UTC() == b.UTC()
 	},
 	func(a, b labels.Selector) bool {
@@ -79,18 +80,34 @@ var Semantic = conversion.EqualitiesOrDie(
 )
 
 var standardResources = sets.NewString(
-	string(ResourceMemory),
 	string(ResourceCPU),
+	string(ResourceMemory),
 	string(ResourcePods),
 	string(ResourceQuotas),
 	string(ResourceServices),
 	string(ResourceReplicationControllers),
 	string(ResourceSecrets),
 	string(ResourcePersistentVolumeClaims),
-	string(ResourceStorage))
+	string(ResourceStorage),
+)
 
+// IsStandardResourceName returns true if the resource is known to the system
 func IsStandardResourceName(str string) bool {
 	return standardResources.Has(str)
+}
+
+var integerResources = sets.NewString(
+	string(ResourcePods),
+	string(ResourceQuotas),
+	string(ResourceServices),
+	string(ResourceReplicationControllers),
+	string(ResourceSecrets),
+	string(ResourcePersistentVolumeClaims),
+)
+
+// IsIntegerResourceName returns true if the resource is measured in integer values
+func IsIntegerResourceName(str string) bool {
+	return integerResources.Has(str)
 }
 
 // NewDeleteOptions returns a DeleteOptions indicating the resource should
@@ -234,4 +251,16 @@ func containsAccessMode(modes []PersistentVolumeAccessMode, mode PersistentVolum
 		}
 	}
 	return false
+}
+
+// ParseRFC3339 parses an RFC3339 date in either RFC3339Nano or RFC3339 format.
+func ParseRFC3339(s string, nowFn func() unversioned.Time) (unversioned.Time, error) {
+	if t, timeErr := time.Parse(time.RFC3339Nano, s); timeErr == nil {
+		return unversioned.Time{t}, nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return unversioned.Time{}, err
+	}
+	return unversioned.Time{t}, nil
 }

@@ -12,9 +12,12 @@ const (
 	BuilderServiceAccountName  = "builder"
 	DeployerServiceAccountName = "deployer"
 
-	InfraBuildControllerServiceAccountName       = "build-controller"
-	InfraReplicationControllerServiceAccountName = "replication-controller"
-	InfraDeploymentControllerServiceAccountName  = "deployment-controller"
+	InfraBuildControllerServiceAccountName            = "build-controller"
+	InfraReplicationControllerServiceAccountName      = "replication-controller"
+	InfraDeploymentControllerServiceAccountName       = "deployment-controller"
+	InfraJobControllerServiceAccountName              = "job-controller"
+	InfraHPAControllerServiceAccountName              = "hpa-controller"
+	InfraPersistentVolumeControllerServiceAccountName = "pv-controller"
 
 	MasterUnqualifiedUsername   = "openshift-master"
 	RouterUnqualifiedUsername   = "openshift-router"
@@ -62,9 +65,12 @@ const (
 	BasicUserRoleName       = "basic-user"
 	StatusCheckerRoleName   = "cluster-status"
 
-	BuildControllerRoleName       = "system:build-controller"
-	ReplicationControllerRoleName = "system:replication-controller"
-	DeploymentControllerRoleName  = "system:deployment-controller"
+	BuildControllerRoleName            = "system:build-controller"
+	ReplicationControllerRoleName      = "system:replication-controller"
+	DeploymentControllerRoleName       = "system:deployment-controller"
+	JobControllerRoleName              = "system:job-controller"
+	HPAControllerRoleName              = "system:hpa-controller"
+	PersistentVolumeControllerRoleName = "system:pv-controller"
 
 	ImagePullerRoleName       = "system:image-puller"
 	ImageBuilderRoleName      = "system:image-builder"

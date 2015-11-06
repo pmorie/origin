@@ -11,18 +11,14 @@ import (
 	"strings"
 
 	"code.google.com/p/go-uuid/uuid"
-	"github.com/fsouza/go-dockerclient"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
-	kutil "k8s.io/kubernetes/pkg/util"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"github.com/openshift/origin/pkg/generate/git"
-	imageapi "github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/util"
-	"github.com/openshift/origin/pkg/util/namer"
 )
 
 const (
@@ -76,6 +72,9 @@ func (g *Generated) WithType(slicePtr interface{}) bool {
 }
 
 func nameFromGitURL(url *url.URL) (string, bool) {
+	if url == nil {
+		return "", false
+	}
 	// from path
 	if name, ok := git.NameFromRepositoryURL(url); ok {
 		return name, true
@@ -101,6 +100,8 @@ type SourceRef struct {
 	ContextDir string
 
 	DockerfileContents string
+
+	Binary bool
 }
 
 func urlWithoutRef(url url.URL) string {
@@ -110,13 +111,13 @@ func urlWithoutRef(url url.URL) string {
 
 // SuggestName returns a name derived from the source URL
 func (r *SourceRef) SuggestName() (string, bool) {
+	if r == nil {
+		return "", false
+	}
 	if len(r.Name) > 0 {
 		return r.Name, true
 	}
-	if r.URL != nil {
-		return nameFromGitURL(r.URL)
-	}
-	return "", false
+	return nameFromGitURL(r.URL)
 }
 
 // BuildSource returns an OpenShift BuildSource from the SourceRef
@@ -135,22 +136,23 @@ func (r *SourceRef) BuildSource() (*buildapi.BuildSource, []buildapi.BuildTrigge
 			},
 		},
 	}
-	var source *buildapi.BuildSource
-	switch {
-	case r.URL != nil:
-		source = &buildapi.BuildSource{
-			Type: buildapi.BuildSourceGit,
-			Git: &buildapi.GitBuildSource{
-				URI: urlWithoutRef(*r.URL),
-				Ref: r.Ref,
-			},
-			ContextDir: r.ContextDir,
+	source := &buildapi.BuildSource{}
+
+	if len(r.DockerfileContents) != 0 {
+		source.Type = buildapi.BuildSourceDockerfile
+		source.Dockerfile = &r.DockerfileContents
+	}
+	if r.URL != nil {
+		source.Type = buildapi.BuildSourceGit
+		source.Git = &buildapi.GitBuildSource{
+			URI: urlWithoutRef(*r.URL),
+			Ref: r.Ref,
 		}
-	case len(r.DockerfileContents) != 0:
-		source = &buildapi.BuildSource{
-			Type:       buildapi.BuildSourceDockerfile,
-			Dockerfile: &r.DockerfileContents,
-		}
+		source.ContextDir = r.ContextDir
+	}
+	if r.Binary {
+		source.Type = buildapi.BuildSourceBinary
+		source.Binary = &buildapi.BinaryBuildSource{}
 	}
 	return source, triggers
 }
@@ -183,209 +185,6 @@ func (s *BuildStrategyRef) BuildStrategy(env Environment) (*buildapi.BuildStrate
 	}, s.Base.BuildTriggers()
 }
 
-// ImageRef is a reference to an image
-type ImageRef struct {
-	imageapi.DockerImageReference
-	AsImageStream bool
-	OutputImage   bool
-	Insecure      bool
-	HasEmptyDir   bool
-
-	// ObjectName overrides the name of the ImageStream produced
-	// but does not affect the DockerImageReference
-	ObjectName string
-
-	Stream *imageapi.ImageStream
-	Info   *imageapi.DockerImage
-}
-
-// ObjectReference returns an object reference from the image reference
-func (r *ImageRef) ObjectReference() kapi.ObjectReference {
-	switch {
-	case r.Stream != nil:
-		return kapi.ObjectReference{
-			Kind:      "ImageStreamTag",
-			Name:      imageapi.JoinImageStreamTag(r.Stream.Name, r.Tag),
-			Namespace: r.Stream.Namespace,
-		}
-	case r.AsImageStream:
-		return kapi.ObjectReference{
-			Kind: "ImageStreamTag",
-			Name: imageapi.JoinImageStreamTag(r.Name, r.Tag),
-		}
-	default:
-		return kapi.ObjectReference{
-			Kind: "DockerImage",
-			Name: r.String(),
-		}
-	}
-}
-
-// RepoName returns the name of the image in namespace/name format
-func (r *ImageRef) RepoName() string {
-	name := r.Namespace
-	if len(name) > 0 {
-		name += "/"
-	}
-	name += r.Name
-	return name
-}
-
-// SuggestName suggests a name for an image reference
-func (r *ImageRef) SuggestName() (string, bool) {
-	if r != nil && len(r.ObjectName) > 0 {
-		return r.ObjectName, true
-	}
-	if r == nil || len(r.Name) == 0 {
-		return "", false
-	}
-	return r.Name, true
-}
-
-// BuildOutput returns the BuildOutput of an image reference
-func (r *ImageRef) BuildOutput() (*buildapi.BuildOutput, error) {
-	if r == nil {
-		return &buildapi.BuildOutput{}, nil
-	}
-	imageRepo, err := r.ImageStream()
-	if err != nil {
-		return nil, err
-	}
-	kind := "ImageStreamTag"
-	if !r.AsImageStream {
-		kind = "DockerImage"
-	}
-	return &buildapi.BuildOutput{
-		To: &kapi.ObjectReference{
-			Kind: kind,
-			Name: imageapi.JoinImageStreamTag(imageRepo.Name, r.Tag),
-		},
-	}, nil
-}
-
-// BuildTriggers sets up build triggers for the base image
-func (r *ImageRef) BuildTriggers() []buildapi.BuildTriggerPolicy {
-	if r.Stream == nil && !r.AsImageStream {
-		return nil
-	}
-	return []buildapi.BuildTriggerPolicy{
-		{
-			Type:        buildapi.ImageChangeBuildTriggerType,
-			ImageChange: &buildapi.ImageChangeTrigger{},
-		},
-	}
-}
-
-// ImageStream returns an ImageStream from an image reference
-func (r *ImageRef) ImageStream() (*imageapi.ImageStream, error) {
-	if r.Stream != nil {
-		return r.Stream, nil
-	}
-
-	name, ok := r.SuggestName()
-	if !ok {
-		return nil, fmt.Errorf("unable to suggest an ImageStream name for %q", r.String())
-	}
-
-	stream := &imageapi.ImageStream{
-		ObjectMeta: kapi.ObjectMeta{
-			Name: name,
-		},
-	}
-	if !r.OutputImage {
-		stream.Spec.DockerImageRepository = r.AsRepository().String()
-		if r.Insecure {
-			stream.ObjectMeta.Annotations = map[string]string{
-				imageapi.InsecureRepositoryAnnotation: "true",
-			}
-		}
-	}
-
-	return stream, nil
-}
-
-// DeployableContainer sets up a container for the image ready for deployment
-func (r *ImageRef) DeployableContainer() (container *kapi.Container, triggers []deployapi.DeploymentTriggerPolicy, err error) {
-	name, ok := r.SuggestName()
-	if !ok {
-		return nil, nil, fmt.Errorf("unable to suggest a container name for the image %q", r.String())
-	}
-	if r.AsImageStream {
-		tag := r.Tag
-		if len(tag) == 0 {
-			tag = imageapi.DefaultImageTag
-		}
-		imageChangeParams := &deployapi.DeploymentTriggerImageChangeParams{
-			Automatic:      true,
-			ContainerNames: []string{name},
-			Tag:            tag,
-		}
-		if r.Stream != nil {
-			imageChangeParams.From = kapi.ObjectReference{
-				Kind:      "ImageStream",
-				Name:      r.Stream.Name,
-				Namespace: r.Stream.Namespace,
-			}
-		} else {
-			imageChangeParams.From = kapi.ObjectReference{
-				Kind: "ImageStream",
-				Name: name,
-			}
-		}
-		triggers = []deployapi.DeploymentTriggerPolicy{
-			{
-				Type:              deployapi.DeploymentTriggerOnImageChange,
-				ImageChangeParams: imageChangeParams,
-			},
-		}
-	}
-
-	container = &kapi.Container{
-		Name:  name,
-		Image: r.String(),
-	}
-
-	// If imageInfo present, append ports
-	if r.Info != nil && r.Info.Config != nil {
-		ports := []string{}
-		// ExposedPorts can consist of multiple space-separated ports
-		for exposed := range r.Info.Config.ExposedPorts {
-			ports = append(ports, strings.Split(exposed, " ")...)
-		}
-
-		for _, sp := range ports {
-			p := docker.Port(sp)
-			port, err := strconv.Atoi(p.Port())
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse port %q: %v", p.Port(), err)
-			}
-
-			container.Ports = append(container.Ports, kapi.ContainerPort{
-				ContainerPort: port,
-				Protocol:      kapi.Protocol(strings.ToUpper(p.Proto())),
-			})
-		}
-
-		// Create volume mounts with names based on container name
-		maxDigits := len(fmt.Sprintf("%d", len(r.Info.Config.Volumes)))
-		baseName := namer.GetName(container.Name, volumeNameInfix, kutil.LabelValueMaxLength-maxDigits-1)
-		i := 1
-		for volume := range r.Info.Config.Volumes {
-			r.HasEmptyDir = true
-			container.VolumeMounts = append(container.VolumeMounts, kapi.VolumeMount{
-				Name:      fmt.Sprintf("%s-%d", baseName, i),
-				ReadOnly:  false,
-				MountPath: volume,
-			})
-			i++
-		}
-		// TODO: Append environment variables
-	}
-
-	return container, triggers, nil
-
-}
-
 // BuildRef is a reference to a build configuration
 type BuildRef struct {
 	Source   *SourceRef
@@ -402,9 +201,9 @@ func (r *BuildRef) BuildConfig() (*buildapi.BuildConfig, error) {
 		return nil, fmt.Errorf("unable to suggest a name for this BuildConfig from %q", r.Source.URL)
 	}
 	var source *buildapi.BuildSource
-	sourceTriggers := []buildapi.BuildTriggerPolicy{}
+	triggers := []buildapi.BuildTriggerPolicy{}
 	if r.Source != nil {
-		source, sourceTriggers = r.Source.BuildSource()
+		source, triggers = r.Source.BuildSource()
 	}
 	if source == nil {
 		source = &buildapi.BuildSource{}
@@ -418,12 +217,14 @@ func (r *BuildRef) BuildConfig() (*buildapi.BuildConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	configChangeTrigger := buildapi.BuildTriggerPolicy{
-		Type: buildapi.ConfigChangeBuildTriggerType,
-	}
 
-	triggers := append(sourceTriggers, configChangeTrigger)
-	triggers = append(triggers, strategyTriggers...)
+	if source.Binary == nil {
+		configChangeTrigger := buildapi.BuildTriggerPolicy{
+			Type: buildapi.ConfigChangeBuildTriggerType,
+		}
+		triggers = append(triggers, configChangeTrigger)
+		triggers = append(triggers, strategyTriggers...)
+	}
 
 	return &buildapi.BuildConfig{
 		ObjectMeta: kapi.ObjectMeta{

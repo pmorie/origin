@@ -544,23 +544,49 @@ os::build::require_clean_tree() {
 # used to determine the common range with the second argument. If the first argument
 # is not an integer, it is assumed to be a Git commit range and output directly.
 os::build::commit_range() {
+  local remote
+  remote="${UPSTREAM_REMOTE:-origin}"
   if [[ "$1" =~ ^-?[0-9]+$ ]]; then
     local target
-    target="$(git rev-parse origin/pr/$1)"
+    target="$(git rev-parse ${remote}/pr/$1)"
     if [[ $? -ne 0 ]]; then
-      echo "Branch does not exist, or you have not configured origin/pr/* style branches from GitHub" 1>&2
+      echo "Branch does not exist, or you have not configured ${remote}/pr/* style branches from GitHub" 1>&2
       exit 1
     fi
 
     local base
-    base="$(git merge-base origin/pr/$1 $2)"
+    base="$(git merge-base ${target} $2)"
     if [[ $? -ne 0 ]]; then
       echo "Branch has no common commits with $2" 1>&2
       exit 1
     fi
     if [[ "${base}" == "${target}" ]]; then
-      echo "Branch has already been merged to upstream master, use explicit range instead" 1>&2
-      exit 1
+
+      # DO NOT TRUST THIS CODE
+      merged="$(git rev-list --reverse ${target}..$2 --ancestry-path | head -1)"
+      if [[ -z "${merged}" ]]; then
+        echo "Unable to find the commit that merged ${remote}/pr/$1" 1>&2
+        exit 1
+      fi
+      #if [[ $? -ne 0 ]]; then
+      #  echo "Unable to find the merge commit for $1: ${merged}" 1>&2
+      #  exit 1
+      #fi
+      echo "++ pr/$1 appears to have merged at ${merged}" 1>&2
+      leftparent="$(git rev-list --parents -n 1 ${merged} | cut -f2 -d ' ')"
+      if [[ $? -ne 0 ]]; then
+        echo "Unable to find the left-parent for the merge of for $1" 1>&2
+        exit 1
+      fi
+      base="$(git merge-base ${target} ${leftparent})"
+      if [[ $? -ne 0 ]]; then
+        echo "Unable to find the common commit between ${leftparent} and $1" 1>&2
+        exit 1
+      fi
+      echo "${base}..${target}"
+      exit 0
+      #echo "Branch has already been merged to upstream master, use explicit range instead" 1>&2
+      #exit 1
     fi
 
     echo "${base}...${target}"

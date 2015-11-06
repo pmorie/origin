@@ -17,17 +17,26 @@
       created <relative-timestamp timestamp="pod.metadata.creationTimestamp"></relative-timestamp>
     </div>
 
-  </div>               
+  </div>
 
-  <div class="pod-block row">
-    <div class="col-xs-12 col-lg-6">  
-      <div class="component-label">Containers</div>
-      <pod-template pod-template="pod"></pod-template>
+  <div row mobile="column" axis="center center" class="pod-block">
+    <div row>
+      <!-- spacer -->
+      <div flex class="visible-xs-block"></div>
+      <div column class="overview-pods">
+        <div column>
+          <pod-status-chart pods="[pod]" ng-click="viewPod()"></pod-status-chart>
+        </div>
+      </div>
+      <!-- spacer -->
+      <div flex class="visible-xs-block"></div>
     </div>
-
-    <div class="col-xs-12 col-lg-6">
-      <div class="component-label">Status</div>
-      <pods pods="[pod]"></pods>
+    <div column grow="2">
+      <!-- spacer -->
+      <div flex></div>
+      <pod-template pod-template="pod"></pod-template>
+      <!-- spacer -->
+      <div flex></div>
     </div>
   </div>
 </div>

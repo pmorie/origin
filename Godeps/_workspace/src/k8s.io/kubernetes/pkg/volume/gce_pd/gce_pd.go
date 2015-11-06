@@ -66,9 +66,9 @@ func (plugin *gcePersistentDiskPlugin) GetAccessModes() []api.PersistentVolumeAc
 	}
 }
 
-func (plugin *gcePersistentDiskPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.VolumeOptions, mounter mount.Interface) (volume.Builder, error) {
+func (plugin *gcePersistentDiskPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.VolumeOptions) (volume.Builder, error) {
 	// Inject real implementations here, test through the internal function.
-	return plugin.newBuilderInternal(spec, pod.UID, &GCEDiskUtil{}, mounter)
+	return plugin.newBuilderInternal(spec, pod.UID, &GCEDiskUtil{}, plugin.host.GetMounter())
 }
 
 func (plugin *gcePersistentDiskPlugin) newBuilderInternal(spec *volume.Spec, podUID types.UID, manager pdManager, mounter mount.Interface) (volume.Builder, error) {
@@ -107,9 +107,9 @@ func (plugin *gcePersistentDiskPlugin) newBuilderInternal(spec *volume.Spec, pod
 		diskMounter: &mount.SafeFormatAndMount{mounter, exec.New()}}, nil
 }
 
-func (plugin *gcePersistentDiskPlugin) NewCleaner(volName string, podUID types.UID, mounter mount.Interface) (volume.Cleaner, error) {
+func (plugin *gcePersistentDiskPlugin) NewCleaner(volName string, podUID types.UID) (volume.Cleaner, error) {
 	// Inject real implementations here, test through the internal function.
-	return plugin.newCleanerInternal(volName, podUID, &GCEDiskUtil{}, mounter)
+	return plugin.newCleanerInternal(volName, podUID, &GCEDiskUtil{}, plugin.host.GetMounter())
 }
 
 func (plugin *gcePersistentDiskPlugin) newCleanerInternal(volName string, podUID types.UID, manager pdManager, mounter mount.Interface) (volume.Cleaner, error) {
@@ -164,6 +164,10 @@ type gcePersistentDiskBuilder struct {
 }
 
 var _ volume.Builder = &gcePersistentDiskBuilder{}
+
+func (_ *gcePersistentDiskBuilder) SupportsOwnershipManagement() bool {
+	return true
+}
 
 // SetUp attaches the disk and bind mounts to the volume path.
 func (b *gcePersistentDiskBuilder) SetUp() error {
@@ -232,6 +236,10 @@ func (b *gcePersistentDiskBuilder) SetUpAt(dir string) error {
 
 func (b *gcePersistentDiskBuilder) IsReadOnly() bool {
 	return b.readOnly
+}
+
+func (b *gcePersistentDiskBuilder) SupportsSELinux() bool {
+	return true
 }
 
 func makeGlobalPDName(host volume.VolumeHost, devName string) string {

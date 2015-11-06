@@ -417,6 +417,97 @@ _oadm_policy_reconcile-cluster-role-bindings()
     must_have_one_noun=()
 }
 
+_oadm_policy_add-scc-to-user()
+{
+    last_command="oadm_policy_add-scc-to-user"
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--serviceaccount=")
+    two_word_flags+=("-z")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+}
+
+_oadm_policy_add-scc-to-group()
+{
+    last_command="oadm_policy_add-scc-to-group"
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+}
+
+_oadm_policy_remove-scc-from-user()
+{
+    last_command="oadm_policy_remove-scc-from-user"
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--serviceaccount=")
+    two_word_flags+=("-z")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+}
+
+_oadm_policy_remove-scc-from-group()
+{
+    last_command="oadm_policy_remove-scc-from-group"
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+}
+
+_oadm_policy_reconcile-sccs()
+{
+    last_command="oadm_policy_reconcile-sccs"
+    commands=()
+
+    flags=()
+    two_word_flags=()
+    flags_with_completion=()
+    flags_completion=()
+
+    flags+=("--additive-only")
+    flags+=("--confirm")
+    flags+=("--infrastructure-namespace=")
+    flags+=("--no-headers")
+    flags+=("--output=")
+    two_word_flags+=("-o")
+    flags+=("--output-version=")
+    flags+=("--show-all")
+    flags+=("-a")
+    flags+=("--sort-by=")
+    flags+=("--template=")
+    two_word_flags+=("-t")
+
+    must_have_one_flag=()
+    must_have_one_noun=()
+}
+
 _oadm_policy()
 {
     last_command="oadm_policy"
@@ -434,6 +525,11 @@ _oadm_policy()
     commands+=("remove-cluster-role-from-group")
     commands+=("reconcile-cluster-roles")
     commands+=("reconcile-cluster-role-bindings")
+    commands+=("add-scc-to-user")
+    commands+=("add-scc-to-group")
+    commands+=("remove-scc-from-user")
+    commands+=("remove-scc-from-group")
+    commands+=("reconcile-sccs")
 
     flags=()
     two_word_flags=()
@@ -524,6 +620,7 @@ _oadm_router()
     flags_completion+=("__handle_filename_extension_flag kubeconfig")
     flags+=("--default-cert=")
     flags+=("--dry-run")
+    flags+=("--expose-metrics")
     flags+=("--external-host=")
     flags+=("--external-host-http-vserver=")
     flags+=("--external-host-https-vserver=")
@@ -536,6 +633,7 @@ _oadm_router()
     flags+=("--images=")
     flags+=("--labels=")
     flags+=("--latest-images")
+    flags+=("--metrics-image=")
     flags+=("--no-headers")
     flags+=("--output=")
     two_word_flags+=("-o")
@@ -670,6 +768,7 @@ _oadm_manage-node()
     flags+=("--dry-run")
     flags+=("--evacuate")
     flags+=("--force")
+    flags+=("--grace-period=")
     flags+=("--list-pods")
     flags+=("--no-headers")
     flags+=("--output=")
@@ -1003,9 +1102,9 @@ _oadm_pod-network_join-projects()
     must_have_one_noun=()
 }
 
-_oadm_pod-network_unisolate-projects()
+_oadm_pod-network_make-projects-global()
 {
-    last_command="oadm_pod-network_unisolate-projects"
+    last_command="oadm_pod-network_make-projects-global"
     commands=()
 
     flags=()
@@ -1024,7 +1123,7 @@ _oadm_pod-network()
     last_command="oadm_pod-network"
     commands=()
     commands+=("join-projects")
-    commands+=("unisolate-projects")
+    commands+=("make-projects-global")
 
     flags=()
     two_word_flags=()
@@ -1368,6 +1467,7 @@ _oadm()
     flags+=("--ir-data-source=")
     flags+=("--ir-dbname=")
     flags+=("--ir-influxdb-host=")
+    flags+=("--ir-namespace-only")
     flags+=("--ir-password=")
     flags+=("--ir-percentile=")
     flags+=("--ir-user=")
@@ -1394,7 +1494,7 @@ _oadm()
 __start_oadm()
 {
     local cur prev words cword
-    if declare -F _init_completions >/dev/null 2>&1; then
+    if declare -F _init_completion >/dev/null 2>&1; then
         _init_completion -s || return
     else
         __my_init_completion || return

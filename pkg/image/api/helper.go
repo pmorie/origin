@@ -128,6 +128,18 @@ func (r DockerImageReference) AsRepository() DockerImageReference {
 	return r
 }
 
+// DaemonMinimal clears defaults that Docker assumes.
+func (r DockerImageReference) DaemonMinimal() DockerImageReference {
+	if r.Namespace == "library" {
+		r.Namespace = ""
+	}
+	switch r.Registry {
+	case "index.docker.io", "docker.io":
+		r.Registry = "docker.io"
+	}
+	return r.Minimal()
+}
+
 // NameString returns the name of the reference with its tag or ID.
 func (r DockerImageReference) NameString() string {
 	switch {
@@ -196,6 +208,16 @@ func JoinImageStreamTag(name, tag string) string {
 		tag = DefaultImageTag
 	}
 	return fmt.Sprintf("%s:%s", name, tag)
+}
+
+// NormalizeImageStreamTag normalizes an image stream tag by defaulting to 'latest'
+// if no tag has been specified.
+func NormalizeImageStreamTag(name string) string {
+	if !strings.Contains(name, ":") {
+		// Default to latest
+		return JoinImageStreamTag(name, DefaultImageTag)
+	}
+	return name
 }
 
 // ImageWithMetadata returns a copy of image with the DockerImageMetadata filled in
@@ -307,6 +329,38 @@ func AddTagEventToImageStream(stream *ImageStream, tag string, next TagEvent) bo
 	return true
 }
 
+// UpdateChangedTrackingTags identifies any tags in the status that have changed and
+// ensures any referenced tracking tags are also updated. It returns the number of
+// updates applied.
+func UpdateChangedTrackingTags(new, old *ImageStream) int {
+	changes := 0
+	for newTag, newImages := range new.Status.Tags {
+		if oldImages, ok := old.Status.Tags[newTag]; ok {
+			changed, deleted := tagsChanged(oldImages.Items, newImages.Items)
+			if !changed || deleted {
+				continue
+			}
+			changes += UpdateTrackingTags(new, newTag, newImages.Items[0])
+		}
+	}
+	return changes
+}
+
+// tagsChanged returns true if the two lists differ, and if the newer list is empty
+// then deleted is returned true as well.
+func tagsChanged(new, old []TagEvent) (changed bool, deleted bool) {
+	switch {
+	case len(old) == 0 && len(new) == 0:
+		return false, false
+	case len(new) == 0:
+		return true, true
+	case len(old) == 0:
+		return true, false
+	default:
+		return new[0] == old[0], false
+	}
+}
+
 // UpdateTrackingTags sets updatedImage as the most recent TagEvent for all tags
 // in stream.spec.tags that have from.kind = "ImageStreamTag" and the tag in from.name
 // = updatedTag. from.name may be either <tag> or <stream name>:<tag>. For now, only
@@ -315,7 +369,10 @@ func AddTagEventToImageStream(stream *ImageStream, tag string, next TagEvent) bo
 // For example, if stream.spec.tags[latest].from.name = 2.0, whenever an image is pushed
 // to this stream with the tag 2.0, status.tags[latest].items[0] will also be updated
 // to point at the same image that was just pushed for 2.0.
-func UpdateTrackingTags(stream *ImageStream, updatedTag string, updatedImage TagEvent) {
+//
+// Returns the number of tags changed.
+func UpdateTrackingTags(stream *ImageStream, updatedTag string, updatedImage TagEvent) int {
+	updated := 0
 	glog.V(5).Infof("UpdateTrackingTags: stream=%s/%s, updatedTag=%s, updatedImage.dockerImageReference=%s, updatedImage.image=%s", stream.Namespace, stream.Name, updatedTag, updatedImage.DockerImageReference, updatedImage.Image)
 	for specTag, tagRef := range stream.Spec.Tags {
 		glog.V(5).Infof("Examining spec tag %q, tagRef=%#v", specTag, tagRef)
@@ -371,9 +428,12 @@ func UpdateTrackingTags(stream *ImageStream, updatedTag string, updatedImage Tag
 			continue
 		}
 
-		updated := AddTagEventToImageStream(stream, specTag, updatedImage)
-		glog.V(5).Infof("stream updated? %t", updated)
+		if AddTagEventToImageStream(stream, specTag, updatedImage) {
+			glog.V(5).Infof("stream updated")
+			updated++
+		}
 	}
+	return updated
 }
 
 // ResolveImageID returns a sets.String of all the image IDs in stream that start with imageID.
@@ -393,4 +453,16 @@ func ResolveImageID(stream *ImageStream, imageID string) sets.String {
 		}
 	}
 	return set
+}
+
+// ShortDockerImageID returns a short form of the provided DockerImage ID for display
+func ShortDockerImageID(image *DockerImage, length int) string {
+	id := image.ID
+	if s, err := digest.ParseDigest(id); err == nil {
+		id = s.Hex()
+	}
+	if len(id) > length {
+		id = id[:length]
+	}
+	return id
 }

@@ -24,12 +24,12 @@ oc get secret json-with-extension yml-with-extension
 echo "resource-builder: ok"
 
 oc get pods --match-server-version
-oc create -f examples/hello-openshift/hello-pod.json
+[ "$(oc create -f examples/hello-openshift/hello-pod.json 2>&1 | grep 'pod "hello-openshift" created')" ]
 oc describe pod hello-openshift
 oc delete pods hello-openshift
 echo "pods: ok"
 
-oc create -f examples/hello-openshift/hello-pod.json
+[ "$(oc create -f examples/hello-openshift/hello-pod.json -o name 2>&1 | grep 'pod/hello-openshift')" ]
 tryuntil oc label pod/hello-openshift acustom=label # can race against scheduling and status updates
 [ "$(oc describe pod/hello-openshift | grep 'acustom=label')" ]
 tryuntil oc annotate pod/hello-openshift foo=bar # can race against scheduling and status updates
@@ -42,6 +42,11 @@ oc get services
 oc create -f test/integration/fixtures/test-service.json
 oc delete services frontend
 echo "services: ok"
+
+oc create -f test/fixtures/mixed-api-versions.yaml
+oc get    -f test/fixtures/mixed-api-versions.yaml -o yaml > /dev/null
+oc delete -f test/fixtures/mixed-api-versions.yaml
+echo "list version conversion: ok"
 
 oc get nodes
 (
@@ -70,6 +75,10 @@ oc expose svc/external
 [ "$(oc get route external | grep 'external=service')" ]
 oc delete route external
 oc delete svc external
+# Expose multiport service and verify we set a port in the route
+oc create -f test/fixtures/multiport-service.yaml
+oc expose svc/frontend --name route-with-set-port
+os::util::get_object_assert 'route route-with-set-port' "{{.spec.port.targetPort}}" '8080'
 echo "expose: ok"
 
 oc delete all --all

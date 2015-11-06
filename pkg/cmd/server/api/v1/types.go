@@ -1,8 +1,7 @@
 package v1
 
 import (
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -10,7 +9,7 @@ type ExtendedArguments map[string][]string
 
 // NodeConfig is the fully specified config starting an OpenShift node
 type NodeConfig struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// NodeName is the value used to identify this particular node in the cluster.  If possible, this should be your fully qualified hostname.
 	// If you're describing a set of static nodes to the master, this value must match one of the values in the list
@@ -116,7 +115,7 @@ const (
 type FeatureList []string
 
 type MasterConfig struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// ServingInfo describes how to start serving
 	ServingInfo HTTPServingInfo `json:"servingInfo"`
@@ -471,7 +470,7 @@ type SessionConfig struct {
 
 // SessionSecrets list the secrets to use to sign/encrypt and authenticate/decrypt created sessions.
 type SessionSecrets struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// Secrets is a list of secrets
 	// New sessions are signed and encrypted using the first secret.
@@ -493,34 +492,36 @@ type IdentityProvider struct {
 	UseAsChallenger bool `json:"challenge"`
 	// UseAsLogin indicates whether to use this identity provider for unauthenticated browsers to login against
 	UseAsLogin bool `json:"login"`
+	// MappingMethod determines how identities from this provider are mapped to users
+	MappingMethod string `json:"mappingMethod"`
 	// Provider contains the information about how to set up a specific identity provider
 	Provider runtime.RawExtension `json:"provider"`
 }
 
 type BasicAuthPasswordIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// RemoteConnectionInfo contains information about how to connect to the external basic auth server
 	RemoteConnectionInfo `json:",inline"`
 }
 
 type AllowAllPasswordIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 }
 
 type DenyAllPasswordIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 }
 
 type HTPasswdPasswordIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// File is a reference to your htpasswd file
 	File string `json:"file"`
 }
 
 type LDAPPasswordIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 	// URL is an RFC 2255 URL which specifies the LDAP search parameters to use. The syntax of the URL is
 	//    ldap://host:port/basedn?attribute?scope?filter
 	URL string `json:"url"`
@@ -555,8 +556,16 @@ type LDAPAttributeMapping struct {
 	Email []string `json:"email"`
 }
 
+type KeystonePasswordIdentityProvider struct {
+	unversioned.TypeMeta `json:",inline"`
+	// RemoteConnectionInfo contains information about how to connect to the keystone server
+	RemoteConnectionInfo `json:",inline"`
+	// Domain Name is required for keystone v3
+	DomainName string `json:"domainName"`
+}
+
 type RequestHeaderIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// LoginURL is a URL to redirect unauthenticated /authorize requests to
 	// Unauthenticated requests from OAuth clients which expect interactive logins will be redirected here
@@ -581,7 +590,7 @@ type RequestHeaderIdentityProvider struct {
 }
 
 type GitHubIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// ClientID is the oauth client ID
 	ClientID string `json:"clientID"`
@@ -590,7 +599,7 @@ type GitHubIdentityProvider struct {
 }
 
 type GoogleIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// ClientID is the oauth client ID
 	ClientID string `json:"clientID"`
@@ -602,7 +611,7 @@ type GoogleIdentityProvider struct {
 }
 
 type OpenIDIdentityProvider struct {
-	v1.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 
 	// CA is the optional trusted certificate authority bundle to use when making requests to the server
 	// If empty, the default system roots are used
@@ -684,6 +693,9 @@ type EtcdConfig struct {
 type KubernetesMasterConfig struct {
 	// APILevels is a list of API levels that should be enabled on startup: v1beta3 and v1 as examples
 	APILevels []string `json:"apiLevels"`
+	// DisabledAPIGroupVersions is a map of groups to the versions (or *) that should be disabled.
+	DisabledAPIGroupVersions map[string][]string `json:"disabledAPIGroupVersions"`
+
 	// MasterIP is the public IP address of kubernetes stuff.  If empty, the first result from net.InterfaceAddrs will be used.
 	MasterIP string `json:"masterIP"`
 	// MasterCount is the number of expected masters that should be running. This value defaults to 1 and may be set to a positive integer,
@@ -744,7 +756,7 @@ type AssetExtensionsConfig struct {
 }
 
 type LDAPSyncConfig struct {
-	api.TypeMeta `json:",inline"`
+	unversioned.TypeMeta `json:",inline"`
 	// Host is the scheme, host and port of the LDAP server to connect to:
 	// scheme://host:port
 	URL string `json:"url"`

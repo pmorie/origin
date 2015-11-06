@@ -180,6 +180,11 @@ func GetMasterFileReferences(config *MasterConfig) []*string {
 				refs = append(refs, &provider.RemoteConnectionInfo.ClientCert.CertFile)
 				refs = append(refs, &provider.RemoteConnectionInfo.ClientCert.KeyFile)
 
+			case (*KeystonePasswordIdentityProvider):
+				refs = append(refs, &provider.RemoteConnectionInfo.CA)
+				refs = append(refs, &provider.RemoteConnectionInfo.ClientCert.CertFile)
+				refs = append(refs, &provider.RemoteConnectionInfo.ClientCert.KeyFile)
+
 			case (*OpenIDIdentityProvider):
 				refs = append(refs, &provider.CA)
 
@@ -446,7 +451,8 @@ func IsPasswordAuthenticator(provider IdentityProvider) bool {
 		(*AllowAllPasswordIdentityProvider),
 		(*DenyAllPasswordIdentityProvider),
 		(*HTPasswdPasswordIdentityProvider),
-		(*LDAPPasswordIdentityProvider):
+		(*LDAPPasswordIdentityProvider),
+		(*KeystonePasswordIdentityProvider):
 
 		return true
 	}
@@ -463,6 +469,7 @@ func IsIdentityProviderType(provider runtime.EmbeddedObject) bool {
 		(*DenyAllPasswordIdentityProvider),
 		(*HTPasswdPasswordIdentityProvider),
 		(*LDAPPasswordIdentityProvider),
+		(*KeystonePasswordIdentityProvider),
 		(*OpenIDIdentityProvider),
 		(*GitHubIdentityProvider),
 		(*GoogleIdentityProvider):
@@ -491,7 +498,21 @@ func HasOpenShiftAPILevel(config MasterConfig, apiLevel string) bool {
 	return apiLevelSet.Has(apiLevel)
 }
 
-func HasKubernetesAPILevel(config KubernetesMasterConfig, apiLevel string) bool {
-	apiLevelSet := sets.NewString(config.APILevels...)
-	return apiLevelSet.Has(apiLevel)
+// GetEnabledAPIVersionsForGroup returns the list of API Versions that are enabled for that group
+func GetEnabledAPIVersionsForGroup(config KubernetesMasterConfig, apiGroup string) []string {
+	allowedVersions := KubeAPIGroupsToAllowedVersions[apiGroup]
+	blacklist := sets.NewString(config.DisabledAPIGroupVersions[apiGroup]...)
+
+	if blacklist.Has(AllVersions) {
+		return []string{}
+	}
+
+	enabledVersions := []string{}
+	for _, currVersion := range allowedVersions {
+		if !blacklist.Has(currVersion) {
+			enabledVersions = append(enabledVersions, currVersion)
+		}
+	}
+
+	return enabledVersions
 }

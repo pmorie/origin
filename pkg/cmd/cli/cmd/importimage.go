@@ -24,8 +24,8 @@ const (
 	importImageLong = `
 Import tag and image information from an external Docker image repository
 
-Only image streams that have a value set for spec.dockerImageRepository may
-have tag and image information imported.`
+Only image streams that have a value set for spec.dockerImageRepository and/or
+spec.Tags may have tag and image information imported.`
 
 	importImageExample = `  $ %[1]s import-image mystream`
 )
@@ -83,22 +83,15 @@ func RunImportImage(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, arg
 			Spec:       imageapi.ImageStreamSpec{DockerImageRepository: from},
 		}
 	} else {
-		if len(stream.Spec.DockerImageRepository) == 0 {
-			if len(from) == 0 {
-				return fmt.Errorf("only image streams with spec.dockerImageRepository set may have images imported")
-			}
-			if !confirm {
-				return fmt.Errorf("the image stream already has an import repository set, pass --confirm to update")
-			}
-			stream.Spec.DockerImageRepository = from
-		} else {
-			if len(from) != 0 {
-				if from != stream.Spec.DockerImageRepository {
-					if !confirm {
-						return fmt.Errorf("the image stream has a different import spec %q, pass --confirm to update", stream.Spec.DockerImageRepository)
-					}
-					stream.Spec.DockerImageRepository = from
+		if len(stream.Spec.DockerImageRepository) == 0 && len(stream.Spec.Tags) == 0 {
+			return fmt.Errorf("image stream has not defined anything to import")
+		}
+		if len(from) != 0 {
+			if from != stream.Spec.DockerImageRepository {
+				if !confirm {
+					return fmt.Errorf("the image stream has a different import spec %q, pass --confirm to update", stream.Spec.DockerImageRepository)
 				}
+				stream.Spec.DockerImageRepository = from
 			}
 		}
 	}
@@ -150,7 +143,7 @@ func (e importError) Error() string {
 }
 
 func waitForImport(imageStreamClient client.ImageStreamInterface, name, resourceVersion string) (*imageapi.ImageStream, error) {
-	streamWatch, err := imageStreamClient.Watch(labels.Everything(), fields.SelectorFromSet(fields.Set{"name": name}), resourceVersion)
+	streamWatch, err := imageStreamClient.Watch(labels.Everything(), fields.OneTermEqualSelector("metadata.name", name), resourceVersion)
 	if err != nil {
 		return nil, err
 	}

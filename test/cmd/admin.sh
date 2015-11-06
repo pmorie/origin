@@ -13,6 +13,8 @@ os::log::install_errexit
   set +e
   oc delete project/example project/ui-test-project project/recreated-project
   oc delete sa/router -n default
+  oc delete node/fake-node
+  oc delete groups/group1
   oadm policy reconcile-cluster-roles --confirm
   oadm policy reconcile-cluster-role-bindings --confirm
 ) 2>/dev/null 1>&2
@@ -77,6 +79,19 @@ oadm policy remove-cluster-role-from-group cluster-admin system:unauthenticated
 oadm policy add-cluster-role-to-user cluster-admin system:no-user
 oadm policy remove-cluster-role-from-user cluster-admin system:no-user
 
+oadm policy add-scc-to-user privileged fake-user
+oc get scc/privileged -o yaml | grep fake-user
+oadm policy add-scc-to-user privileged -z fake-sa
+oc get scc/privileged -o yaml | grep "system:serviceaccount:$(oc project -q):fake-sa"
+oadm policy add-scc-to-group privileged fake-group
+oc get scc/privileged -o yaml | grep fake-group
+oadm policy remove-scc-from-user privileged fake-user
+[ ! "$(oc get scc/privileged -o yaml | grep fake-user)" ]
+oadm policy remove-scc-from-user privileged -z fake-sa
+[ ! "$(oc get scc/privileged -o yaml | grep 'system:serviceaccount:$(oc project -q):fake-sa')" ]
+oadm policy remove-scc-from-group privileged fake-group
+[ ! "$(oadm policy add-scc-to-group privileged fake-group)" ]
+
 oc delete clusterrole/cluster-status
 [ ! "$(oc get clusterrole/cluster-status)" ]
 oadm policy reconcile-cluster-roles
@@ -93,7 +108,7 @@ oadm policy reconcile-cluster-roles --additive-only --confirm
 [ "$(oc get clusterroles/basic-user -o json | grep custom-annotation)" ]
 [ "$(oc get clusterroles/basic-user -o json | grep groups)" ]
 oadm policy reconcile-cluster-roles --confirm
-[ ! "$(oc get clusterroles/basic-user -o json | grep groups)" ]
+[ ! "$(oc get clusterroles/basic-user -o yaml | grep groups)" ]
 
 # Ensure a removed binding gets re-added
 oc delete clusterrolebinding/cluster-status-binding
@@ -160,6 +175,9 @@ echo "registry: ok"
 
 # Test building a dependency tree
 oc process -f examples/sample-app/application-template-stibuild.json -l build=sti | oc create -f -
+# Test both the type/name resource syntax and the fact that istag/origin-ruby-sample:latest is still
+# not created but due to a buildConfig pointing to it, we get back its graph of deps.
+[ "$(oadm build-chain istag/origin-ruby-sample | grep 'imagestreamtag/origin-ruby-sample:latest')" ]
 [ "$(oadm build-chain ruby-20-centos7 -o dot | grep 'graph')" ]
 oc delete all -l build=sti
 echo "ex build-chain: ok"
@@ -171,3 +189,22 @@ oc create -f test/fixtures/app-scenarios
 oc status
 oc status -o dot
 echo "complex-scenarios: ok"
+
+# Test reconciling SCCs
+oc delete scc/restricted
+[ ! "$(oc get scc/restricted)" ]
+oadm policy reconcile-sccs
+[ ! "$(oc get scc/restricted)" ]
+oadm policy reconcile-sccs --confirm
+oc get scc/restricted
+
+oadm policy add-scc-to-user restricted my-restricted-user
+[ "$(oc get scc/restricted -o yaml | grep my-restricted-user)" ]
+oadm policy reconcile-sccs --confirm
+[ "$(oc get scc/restricted -o yaml | grep my-restricted-user)" ]
+
+oadm policy remove-scc-from-group restricted system:authenticated
+[ ! "$(oc get scc/restricted -o yaml | grep system:authenticated)" ]
+oadm policy reconcile-sccs --confirm
+[ "$(oc get scc/restricted -o yaml | grep system:authenticated)" ]
+echo "reconcile-scc: ok"

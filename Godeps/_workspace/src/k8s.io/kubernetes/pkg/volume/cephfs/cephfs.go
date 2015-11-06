@@ -63,7 +63,7 @@ func (plugin *cephfsPlugin) GetAccessModes() []api.PersistentVolumeAccessMode {
 	}
 }
 
-func (plugin *cephfsPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.VolumeOptions, mounter mount.Interface) (volume.Builder, error) {
+func (plugin *cephfsPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.VolumeOptions) (volume.Builder, error) {
 	cephvs := plugin.getVolumeSource(spec)
 	secret := ""
 	if cephvs.SecretRef != nil {
@@ -82,7 +82,7 @@ func (plugin *cephfsPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume
 			glog.V(1).Infof("found ceph secret info: %s", name)
 		}
 	}
-	return plugin.newBuilderInternal(spec, pod.UID, mounter, secret)
+	return plugin.newBuilderInternal(spec, pod.UID, plugin.host.GetMounter(), secret)
 }
 
 func (plugin *cephfsPlugin) newBuilderInternal(spec *volume.Spec, podUID types.UID, mounter mount.Interface, secret string) (volume.Builder, error) {
@@ -110,8 +110,8 @@ func (plugin *cephfsPlugin) newBuilderInternal(spec *volume.Spec, podUID types.U
 	}, nil
 }
 
-func (plugin *cephfsPlugin) NewCleaner(volName string, podUID types.UID, mounter mount.Interface) (volume.Cleaner, error) {
-	return plugin.newCleanerInternal(volName, podUID, mounter)
+func (plugin *cephfsPlugin) NewCleaner(volName string, podUID types.UID) (volume.Cleaner, error) {
+	return plugin.newCleanerInternal(volName, podUID, plugin.host.GetMounter())
 }
 
 func (plugin *cephfsPlugin) newCleanerInternal(volName string, podUID types.UID, mounter mount.Interface) (volume.Cleaner, error) {
@@ -151,6 +151,10 @@ type cephfsBuilder struct {
 
 var _ volume.Builder = &cephfsBuilder{}
 
+func (_ *cephfsBuilder) SupportsOwnershipManagement() bool {
+	return false
+}
+
 // SetUp attaches the disk and bind mounts to the volume path.
 func (cephfsVolume *cephfsBuilder) SetUp() error {
 	return cephfsVolume.SetUpAt(cephfsVolume.GetPath())
@@ -181,6 +185,10 @@ func (cephfsVolume *cephfsBuilder) SetUpAt(dir string) error {
 
 func (cephfsVolume *cephfsBuilder) IsReadOnly() bool {
 	return cephfsVolume.readonly
+}
+
+func (cephfsVolume *cephfsBuilder) SupportsSELinux() bool {
+	return false
 }
 
 type cephfsCleaner struct {

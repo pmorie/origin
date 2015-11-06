@@ -86,8 +86,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		forwardedURI = forwardedURI + "/"
 	}
 	req.Header.Set("X-Forwarded-Uri", forwardedURI)
-	req.Header.Set("X-Forwarded-Host", t.Host)
-	req.Header.Set("X-Forwarded-Proto", t.Scheme)
+	if len(t.Host) > 0 {
+		req.Header.Set("X-Forwarded-Host", t.Host)
+	}
+	if len(t.Scheme) > 0 {
+		req.Header.Set("X-Forwarded-Proto", t.Scheme)
+	}
 
 	rt := t.RoundTripper
 	if rt == nil {
@@ -143,8 +147,11 @@ func (t *Transport) rewriteURL(targetURL string, sourceURL *url.URL) string {
 	url.Scheme = t.Scheme
 	url.Host = t.Host
 	origPath := url.Path
+	// Do not rewrite URL if the sourceURL already contains the necessary prefix.
+	if strings.HasPrefix(url.Path, t.PathPrepend) {
+		return url.String()
+	}
 	url.Path = path.Join(t.PathPrepend, url.Path)
-
 	if strings.HasSuffix(origPath, "/") {
 		// Add back the trailing slash, which was stripped by path.Join().
 		url.Path += "/"

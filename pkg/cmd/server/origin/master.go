@@ -35,10 +35,12 @@ import (
 	"github.com/openshift/origin/pkg/build/webhook"
 	"github.com/openshift/origin/pkg/build/webhook/generic"
 	"github.com/openshift/origin/pkg/build/webhook/github"
+	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	deployconfiggenerator "github.com/openshift/origin/pkg/deploy/generator"
 	deployconfigregistry "github.com/openshift/origin/pkg/deploy/registry/deployconfig"
 	deployconfigetcd "github.com/openshift/origin/pkg/deploy/registry/deployconfig/etcd"
+	deploylogregistry "github.com/openshift/origin/pkg/deploy/registry/deploylog"
 	deployrollback "github.com/openshift/origin/pkg/deploy/registry/rollback"
 	"github.com/openshift/origin/pkg/image/registry/image"
 	imageetcd "github.com/openshift/origin/pkg/image/registry/image/etcd"
@@ -68,8 +70,8 @@ import (
 	useretcd "github.com/openshift/origin/pkg/user/registry/user/etcd"
 	"github.com/openshift/origin/pkg/user/registry/useridentitymapping"
 
-	buildclonestorage "github.com/openshift/origin/pkg/build/registry/clone/generator"
-	buildinstantiatestorage "github.com/openshift/origin/pkg/build/registry/instantiate/generator"
+	"github.com/openshift/origin/pkg/build/registry/buildclone"
+	"github.com/openshift/origin/pkg/build/registry/buildconfiginstantiate"
 
 	clusterpolicyregistry "github.com/openshift/origin/pkg/authorization/registry/clusterpolicy"
 	clusterpolicystorage "github.com/openshift/origin/pkg/authorization/registry/clusterpolicy/etcd"
@@ -234,16 +236,14 @@ func (c *MasterConfig) serve(handler http.Handler, extra []string) {
 			if err != nil {
 				glog.Fatal(err)
 			}
-			server.TLSConfig = &tls.Config{
-				// Change default from SSLv3 to TLSv1.0 (because of POODLE vulnerability)
-				MinVersion: tls.VersionTLS10,
+			server.TLSConfig = crypto.SecureTLSConfig(&tls.Config{
 				// Populate PeerCertificates in requests, but don't reject connections without certificates
 				// This allows certificates to be validated by authenticators, while still allowing other auth types
 				ClientAuth: tls.RequestClientCert,
 				ClientCAs:  c.ClientCAs,
 				// Set SNI certificate func
 				GetCertificate: cmdutil.GetCertificateFunc(extraCerts),
-			}
+			})
 			glog.Fatal(cmdutil.ListenAndServeTLS(server, c.Options.ServingInfo.BindNetwork, c.Options.ServingInfo.ServerCert.CertFile, c.Options.ServingInfo.ServerCert.KeyFile))
 		} else {
 			glog.Fatal(server.ListenAndServe())
@@ -274,14 +274,6 @@ func (c *MasterConfig) InstallProtectedAPI(container *restful.Container) []strin
 	legacyAPIVersions := []string{}
 	currentAPIVersions := []string{}
 
-	if configapi.HasOpenShiftAPILevel(c.Options, OpenShiftAPIV1Beta3) {
-		if err := c.api_v1beta3(storage).InstallREST(container); err != nil {
-			glog.Fatalf("Unable to initialize v1beta3 API: %v", err)
-		}
-		messages = append(messages, fmt.Sprintf("Started Origin API at %%s%s", OpenShiftAPIPrefixV1Beta3))
-		legacyAPIVersions = append(legacyAPIVersions, OpenShiftAPIV1Beta3)
-	}
-
 	if configapi.HasOpenShiftAPILevel(c.Options, OpenShiftAPIV1) {
 		if err := c.api_v1(storage).InstallREST(container); err != nil {
 			glog.Fatalf("Unable to initialize v1 API: %v", err)
@@ -307,6 +299,10 @@ func (c *MasterConfig) InstallProtectedAPI(container *restful.Container) []strin
 		container.Add(root)
 	}
 
+	// The old API prefix must continue to return 200 (with an empty versions
+	// list) for backwards compatibility, even though we won't service any other
+	// requests through the route. Take care when considering whether to delete
+	// this route.
 	initAPIVersionRoute(root, LegacyOpenShiftAPIPrefix, legacyAPIVersions...)
 	initAPIVersionRoute(root, OpenShiftAPIPrefix, currentAPIVersions...)
 
@@ -336,8 +332,8 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	buildConfigStorage := buildconfigetcd.NewStorage(c.EtcdHelper)
 	buildConfigRegistry := buildconfigregistry.NewRegistry(buildConfigStorage)
 
-	deployConfigStorage := deployconfigetcd.NewStorage(c.EtcdHelper)
-	deployConfigRegistry := deployconfigregistry.NewRegistry(deployConfigStorage)
+	deployConfigStorage := deployconfigetcd.NewStorage(c.EtcdHelper, c.DeploymentConfigScaleClient())
+	deployConfigRegistry := deployconfigregistry.NewRegistry(deployConfigStorage.DeploymentConfig)
 
 	routeAllocator := c.RouteAllocator()
 
@@ -376,8 +372,8 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 
 	imageStorage := imageetcd.NewREST(c.EtcdHelper)
 	imageRegistry := image.NewRegistry(imageStorage)
-	imageStreamStorage, imageStreamStatusStorage := imagestreametcd.NewREST(c.EtcdHelper, imagestream.DefaultRegistryFunc(defaultRegistryFunc), subjectAccessReviewRegistry)
-	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatusStorage)
+	imageStreamStorage, imageStreamStatusStorage, internalImageStreamStorage := imagestreametcd.NewREST(c.EtcdHelper, imagestream.DefaultRegistryFunc(defaultRegistryFunc), subjectAccessReviewRegistry)
+	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatusStorage, internalImageStreamStorage)
 	imageStreamMappingStorage := imagestreammapping.NewREST(imageRegistry, imageStreamRegistry)
 	imageStreamTagStorage := imagestreamtag.NewREST(imageRegistry, imageStreamRegistry)
 	imageStreamTagRegistry := imagestreamtag.NewRegistry(imageStreamTagStorage)
@@ -406,7 +402,7 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 			LISFn2: imageStreamRegistry.ListImageStreams,
 		},
 	}
-	_, kclient := c.DeploymentConfigControllerClients()
+	configClient, kclient := c.DeploymentConfigClients()
 	deployRollback := &deployrollback.RollbackGenerator{}
 	deployRollbackClient := deployrollback.Client{
 		DCFn: deployConfigRegistry.GetDeploymentConfig,
@@ -441,9 +437,11 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 		"imageStreamMappings": imageStreamMappingStorage,
 		"imageStreamTags":     imageStreamTagStorage,
 
-		"deploymentConfigs":         deployConfigStorage,
+		"deploymentConfigs":         deployConfigStorage.DeploymentConfig,
+		"deploymentConfigs/scale":   deployConfigStorage.Scale,
 		"generateDeploymentConfigs": deployconfiggenerator.NewREST(deployConfigGenerator, c.EtcdHelper.Codec()),
 		"deploymentConfigRollbacks": deployrollback.NewREST(deployRollbackClient, c.EtcdHelper.Codec()),
+		"deploymentConfigs/log":     deploylogregistry.NewREST(configClient, kclient, c.DeploymentLogClient(), kubeletClient),
 
 		"processedTemplates": templateregistry.NewREST(),
 		"templates":          templateetcd.NewREST(c.EtcdHelper),
@@ -488,9 +486,10 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 		storage["builds"] = buildStorage
 		storage["buildConfigs"] = buildConfigStorage
 		storage["buildConfigs/webhooks"] = buildConfigWebHooks
-		storage["builds/clone"] = buildclonestorage.NewStorage(buildGenerator)
-		storage["buildConfigs/instantiate"] = buildinstantiatestorage.NewStorage(buildGenerator)
-		storage["builds/log"] = buildlogregistry.NewREST(buildRegistry, c.BuildLogClient(), kubeletClient)
+		storage["builds/clone"] = buildclone.NewStorage(buildGenerator)
+		storage["buildConfigs/instantiate"] = buildconfiginstantiate.NewStorage(buildGenerator)
+		storage["buildConfigs/instantiatebinary"] = buildconfiginstantiate.NewBinaryStorage(buildGenerator, buildStorage, c.BuildLogClient(), kubeletClient)
+		storage["builds/log"] = buildlogregistry.NewREST(buildStorage, buildStorage, c.BuildLogClient(), kubeletClient)
 	}
 
 	return storage
@@ -502,10 +501,6 @@ func (c *MasterConfig) InstallUnprotectedAPI(container *restful.Container) []str
 
 // initAPIVersionRoute initializes the osapi endpoint to behave similar to the upstream api endpoint
 func initAPIVersionRoute(root *restful.WebService, prefix string, versions ...string) {
-	if len(versions) == 0 {
-		return
-	}
-
 	versionHandler := apiserver.APIVersionHandler(versions...)
 	root.Route(root.GET(prefix).To(versionHandler).
 		Doc("list supported server API versions").
@@ -562,8 +557,9 @@ func (c *MasterConfig) defaultAPIGroupVersion() *apiserver.APIGroupVersion {
 		Convertor: kapi.Scheme,
 		Linker:    latest.SelfLinker,
 
-		Admit:   c.AdmissionControl,
-		Context: c.getRequestContextMapper(),
+		Admit:                   c.AdmissionControl,
+		Context:                 c.getRequestContextMapper(),
+		NonDefaultGroupVersions: map[string]string{},
 	}
 }
 
@@ -581,6 +577,7 @@ func (c *MasterConfig) api_v1beta3(all map[string]rest.Storage) *apiserver.APIGr
 	version.Storage = storage
 	version.Version = OpenShiftAPIV1Beta3
 	version.Codec = v1beta3.Codec
+	version.NonDefaultGroupVersions["deploymentconfigs/scale"] = "extensions/v1beta1"
 	return version
 }
 
@@ -597,6 +594,7 @@ func (c *MasterConfig) api_v1(all map[string]rest.Storage) *apiserver.APIGroupVe
 	version.Storage = storage
 	version.Version = OpenShiftAPIV1
 	version.Codec = v1.Codec
+	version.NonDefaultGroupVersions["deploymentconfigs/scale"] = "extensions/v1beta1"
 	return version
 }
 

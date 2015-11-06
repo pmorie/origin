@@ -4,11 +4,11 @@ import (
 	"fmt"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/generic"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/fielderrors"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
@@ -87,16 +87,8 @@ func Matcher(label labels.Selector, field fields.Selector) generic.Matcher {
 			if !ok {
 				return nil, nil, fmt.Errorf("not a policyBinding")
 			}
-			return labels.Set(policyBinding.ObjectMeta.Labels), SelectableFields(policyBinding), nil
+			return labels.Set(policyBinding.ObjectMeta.Labels), authorizationapi.PolicyBindingToSelectableFields(policyBinding), nil
 		},
-	}
-}
-
-// SelectableFields returns a label set that represents the object
-func SelectableFields(policyBinding *authorizationapi.PolicyBinding) fields.Set {
-	return fields.Set{
-		"name":                policyBinding.Name,
-		"policyRef.namespace": policyBinding.PolicyRef.Namespace,
 	}
 }
 
@@ -104,8 +96,8 @@ func NewEmptyPolicyBinding(namespace, policyNamespace, policyBindingName string)
 	binding := &authorizationapi.PolicyBinding{}
 	binding.Name = policyBindingName
 	binding.Namespace = namespace
-	binding.CreationTimestamp = util.Now()
-	binding.LastModified = util.Now()
+	binding.CreationTimestamp = unversioned.Now()
+	binding.LastModified = unversioned.Now()
 	binding.PolicyRef = kapi.ObjectReference{Name: authorizationapi.PolicyName, Namespace: policyNamespace}
 	binding.RoleBindings = make(map[string]*authorizationapi.RoleBinding)
 

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
-	kutil "k8s.io/kubernetes/pkg/util"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	buildapi "github.com/openshift/origin/pkg/build/api"
@@ -20,11 +20,14 @@ import (
 )
 
 // PrinterCoverageExceptions is the list of API types that do NOT have corresponding printers
-// If you add something to this list, explain why it doesn't need validation.  waaaa is not a valid
+// If you add something to this list, explain why it doesn't need printing.  waaaa is not a valid
 // reason.
 var PrinterCoverageExceptions = []reflect.Type{
-	reflect.TypeOf(&imageapi.DockerImage{}), // not a top level resource
-	reflect.TypeOf(&buildapi.BuildLog{}),    // just a marker type
+	reflect.TypeOf(&imageapi.DockerImage{}),           // not a top level resource
+	reflect.TypeOf(&buildapi.BuildLog{}),              // just a marker type
+	reflect.TypeOf(&buildapi.BuildLogOptions{}),       // just a marker type
+	reflect.TypeOf(&deployapi.DeploymentLog{}),        // just a marker type
+	reflect.TypeOf(&deployapi.DeploymentLogOptions{}), // just a marker type
 
 	// these resources can't be "GET"ed, so we probably don't need a printer for them
 	reflect.TypeOf(&authorizationapi.SubjectAccessReviewResponse{}),
@@ -33,6 +36,10 @@ var PrinterCoverageExceptions = []reflect.Type{
 	reflect.TypeOf(&authorizationapi.ResourceAccessReview{}),
 	reflect.TypeOf(&authorizationapi.LocalSubjectAccessReview{}),
 	reflect.TypeOf(&authorizationapi.LocalResourceAccessReview{}),
+	reflect.TypeOf(&buildapi.BuildLog{}),
+	reflect.TypeOf(&buildapi.BinaryBuildRequestOptions{}),
+	reflect.TypeOf(&buildapi.BuildRequest{}),
+	reflect.TypeOf(&buildapi.BuildLogOptions{}),
 }
 
 // MissingPrinterCoverageExceptions is the list of types that were missing printer methods when I started
@@ -41,8 +48,6 @@ var PrinterCoverageExceptions = []reflect.Type{
 var MissingPrinterCoverageExceptions = []reflect.Type{
 	reflect.TypeOf(&deployapi.DeploymentConfigRollback{}),
 	reflect.TypeOf(&imageapi.ImageStreamMapping{}),
-	reflect.TypeOf(&buildapi.BuildLogOptions{}),
-	reflect.TypeOf(&buildapi.BuildRequest{}),
 	reflect.TypeOf(&projectapi.ProjectRequest{}),
 }
 
@@ -130,7 +135,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "other-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 52, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 52, 0, 0, time.UTC),
 								Image:                "other-image",
 							},
 						},
@@ -139,7 +144,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "latest-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 53, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 53, 0, 0, time.UTC),
 								Image:                "latest-image",
 							},
 						},
@@ -155,7 +160,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "other-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 52, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 52, 0, 0, time.UTC),
 								Image:                "other-image",
 							},
 						},
@@ -164,7 +169,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "latest-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 53, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 53, 0, 0, time.UTC),
 								Image:                "latest-image",
 							},
 						},
@@ -173,7 +178,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "third-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 54, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 54, 0, 0, time.UTC),
 								Image:                "third-image",
 							},
 						},
@@ -189,7 +194,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "other-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 52, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 52, 0, 0, time.UTC),
 								Image:                "other-image",
 							},
 						},
@@ -198,7 +203,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "latest-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 53, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 53, 0, 0, time.UTC),
 								Image:                "latest-image",
 							},
 						},
@@ -207,7 +212,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "third-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 54, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 54, 0, 0, time.UTC),
 								Image:                "third-image",
 							},
 						},
@@ -216,7 +221,7 @@ func mockStreams() []*imageapi.ImageStream {
 						Items: []imageapi.TagEvent{
 							{
 								DockerImageReference: "another-ref",
-								Created:              kutil.Date(2015, 9, 4, 13, 55, 0, 0, time.UTC),
+								Created:              unversioned.Date(2015, 9, 4, 13, 55, 0, 0, time.UTC),
 								Image:                "another-image",
 							},
 						},

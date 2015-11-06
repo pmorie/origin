@@ -1,12 +1,12 @@
 package v1
 
 import (
-	"fmt"
 	"sort"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/conversion"
 
+	oapi "github.com/openshift/origin/pkg/api"
 	newer "github.com/openshift/origin/pkg/image/api"
 )
 
@@ -149,6 +149,7 @@ func init() {
 			for _, curr := range *in {
 				r := newer.TagReference{
 					Annotations: curr.Annotations,
+					Reference:   curr.Reference,
 				}
 				if err := s.Convert(&curr.From, &r.From, 0); err != nil {
 					return err
@@ -169,6 +170,7 @@ func init() {
 				oldTagReference := NamedTagReference{
 					Name:        tag,
 					Annotations: newTagReference.Annotations,
+					Reference:   newTagReference.Reference,
 				}
 				if err := s.Convert(&newTagReference.From, &oldTagReference.From, 0); err != nil {
 					return err
@@ -192,19 +194,15 @@ func init() {
 		panic(err)
 	}
 
-	err = kapi.Scheme.AddFieldLabelConversionFunc("v1", "ImageStream",
-		func(label, value string) (string, string, error) {
-			switch label {
-			case "name":
-				return "metadata.name", value, nil
-			case "metadata.name", "spec.dockerImageRepository", "status.dockerImageRepository":
-				return label, value, nil
-			default:
-				return "", "", fmt.Errorf("field label not supported: %s", label)
-			}
-		})
-	if err != nil {
-		// If one of the conversion functions is malformed, detect it immediately.
+	if err := kapi.Scheme.AddFieldLabelConversionFunc("v1", "Image",
+		oapi.GetFieldLabelConversionFunc(newer.ImageToSelectableFields(&newer.Image{}), nil),
+	); err != nil {
+		panic(err)
+	}
+
+	if err := kapi.Scheme.AddFieldLabelConversionFunc("v1", "ImageStream",
+		oapi.GetFieldLabelConversionFunc(newer.ImageStreamToSelectableFields(&newer.ImageStream{}), map[string]string{"name": "metadata.name"}),
+	); err != nil {
 		panic(err)
 	}
 }

@@ -46,7 +46,7 @@ add_ovs_port() {
 }
 
 del_ovs_port() {
-    ovs-vsctl del-port $veth_host
+    ovs-vsctl --if-exists del-port $veth_host
 }
 
 add_ovs_flows() {
@@ -76,6 +76,7 @@ Setup() {
     get_ipaddr_pid_veth
     add_ovs_port
     add_ovs_flows
+    add_subnet_route
 }
 
 Teardown() {

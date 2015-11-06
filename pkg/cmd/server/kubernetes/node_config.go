@@ -11,12 +11,15 @@ import (
 	"github.com/golang/glog"
 	kapp "k8s.io/kubernetes/cmd/kubelet/app"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/kubelet"
 	"k8s.io/kubernetes/pkg/kubelet/dockertools"
+	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/errors"
 
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
+	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	cmdflags "github.com/openshift/origin/pkg/cmd/util/flags"
@@ -118,17 +121,18 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	server.Address = kubeAddress
 	server.Port = uint(kubePort)
 	server.ReadOnlyPort = 0 // no read only access
-	server.CadvisorPort = 0 // no unsecured cadvisor access
+	server.CAdvisorPort = 0 // no unsecured cadvisor access
 	server.HealthzPort = 0  // no unsecured healthz access
 	server.ClusterDNS = dnsIP
 	server.ClusterDomain = options.DNSDomain
 	server.NetworkPluginName = options.NetworkConfig.NetworkPluginName
-	server.HostNetworkSources = strings.Join([]string{kubelet.ApiserverSource, kubelet.FileSource}, ",")
-	server.HostPIDSources = strings.Join([]string{kubelet.ApiserverSource, kubelet.FileSource}, ",")
-	server.HostIPCSources = strings.Join([]string{kubelet.ApiserverSource, kubelet.FileSource}, ",")
+	server.HostNetworkSources = strings.Join([]string{kubelettypes.ApiserverSource, kubelettypes.FileSource}, ",")
+	server.HostPIDSources = strings.Join([]string{kubelettypes.ApiserverSource, kubelettypes.FileSource}, ",")
+	server.HostIPCSources = strings.Join([]string{kubelettypes.ApiserverSource, kubelettypes.FileSource}, ",")
 	server.HTTPCheckFrequency = 0 // no remote HTTP pod creation access
 	server.FileCheckFrequency = time.Duration(fileCheckInterval) * time.Second
 	server.PodInfraContainerImage = imageTemplate.ExpandOrDie("pod")
+	server.CPUCFSQuota = true // enable cpu cfs quota enforcement by default
 
 	// prevents kube from generating certs
 	server.TLSCertFile = options.ServingInfo.ServerCert.CertFile
@@ -197,9 +201,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 			return nil, err
 		}
 		cfg.TLSOptions = &kubelet.TLSOptions{
-			Config: &tls.Config{
-				// Change default from SSLv3 to TLSv1.0 (because of POODLE vulnerability)
-				MinVersion: tls.VersionTLS10,
+			Config: crypto.SecureTLSConfig(&tls.Config{
 				// RequestClientCert lets us request certs, but allow requests without client certs
 				// Verification is done by the authn layer
 				ClientAuth: tls.RequestClientCert,
@@ -208,13 +210,23 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 				// Do not use NameToCertificate, since that requires certificates be included in the server's tlsConfig.Certificates list,
 				// which we do not control when running with http.Server#ListenAndServeTLS
 				GetCertificate: cmdutil.GetCertificateFunc(extraCerts),
-			},
+			}),
 			CertFile: options.ServingInfo.ServerCert.CertFile,
 			KeyFile:  options.ServingInfo.ServerCert.KeyFile,
 		}
 	} else {
 		cfg.TLSOptions = nil
 	}
+
+	// Prepare cloud provider
+	cloud, err := cloudprovider.InitCloudProvider(server.CloudProvider, server.CloudConfigFile)
+	if err != nil {
+		return nil, err
+	}
+	if cloud != nil {
+		glog.V(2).Infof("Successfully initialized cloud provider: %q from the config file: %q\n", server.CloudProvider, server.CloudConfigFile)
+	}
+	cfg.Cloud = cloud
 
 	config := &NodeConfig{
 		BindAddress: options.ServingInfo.BindAddress,

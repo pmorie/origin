@@ -28,6 +28,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/rest"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
@@ -165,7 +166,7 @@ func (rs *REST) Delete(ctx api.Context, id string) (runtime.Object, error) {
 		}
 	}
 
-	return &api.Status{Status: api.StatusSuccess}, nil
+	return &unversioned.Status{Status: unversioned.StatusSuccess}, nil
 }
 
 func (rs *REST) Get(ctx api.Context, id string) (runtime.Object, error) {
@@ -296,6 +297,9 @@ func (rs *REST) ResourceLocation(ctx api.Context, id string) (*url.URL, http.Rou
 	// Find a Subset that has the port.
 	for ssi := 0; ssi < len(eps.Subsets); ssi++ {
 		ss := &eps.Subsets[(ssSeed+ssi)%len(eps.Subsets)]
+		if len(ss.Addresses) == 0 {
+			continue
+		}
 		for i := range ss.Ports {
 			if ss.Ports[i].Name == portStr {
 				// Pick a random address.
@@ -305,6 +309,15 @@ func (rs *REST) ResourceLocation(ctx api.Context, id string) (*url.URL, http.Rou
 					Scheme: svcScheme,
 					Host:   net.JoinHostPort(ip, strconv.Itoa(port)),
 				}, rs.proxyTransport, nil
+			} else {
+				port, err := strconv.ParseInt(portStr, 10, 64)
+				if err == nil && int(port) == ss.Ports[i].Port {
+					ip := ss.Addresses[rand.Intn(len(ss.Addresses))].IP
+					return &url.URL{
+						Scheme: svcScheme,
+						Host:   net.JoinHostPort(ip, portStr),
+					}, rs.proxyTransport, nil
+				}
 			}
 		}
 	}

@@ -25,11 +25,6 @@ import (
 
 func addDefaultingFuncs() {
 	api.Scheme.AddDefaultingFuncs(
-		func(obj *APIVersion) {
-			if len(obj.APIGroup) == 0 {
-				obj.APIGroup = "experimental"
-			}
-		},
 		func(obj *ReplicationController) {
 			var labels map[string]string
 			if obj.Spec.Template != nil {
@@ -115,6 +110,24 @@ func addDefaultingFuncs() {
 				obj.Protocol = ProtocolUDP
 			}
 		},
+		func(obj *Pod) {
+			// If limits are specified, but requests are not, default requests to limits
+			// This is done here rather than a more specific defaulting pass on ResourceRequirements
+			// because we only want this defaulting semantic to take place on a Pod and not a PodTemplate
+			for i := range obj.Spec.Containers {
+				// set requests to limits if requests are not specified, but limits are
+				if obj.Spec.Containers[i].Resources.Limits != nil {
+					if obj.Spec.Containers[i].Resources.Requests == nil {
+						obj.Spec.Containers[i].Resources.Requests = make(ResourceList)
+					}
+					for key, value := range obj.Spec.Containers[i].Resources.Limits {
+						if _, exists := obj.Spec.Containers[i].Resources.Requests[key]; !exists {
+							obj.Spec.Containers[i].Resources.Requests[key] = *(value.Copy())
+						}
+					}
+				}
+			}
+		},
 		func(obj *PodSpec) {
 			if obj.DNSPolicy == "" {
 				obj.DNSPolicy = DNSClusterFirst
@@ -124,6 +137,10 @@ func addDefaultingFuncs() {
 			}
 			if obj.HostNetwork {
 				defaultHostNetworkPorts(&obj.Containers)
+			}
+
+			if obj.SecurityContext == nil {
+				obj.SecurityContext = &PodSecurityContext{}
 			}
 
 			// Carry migration from serviceAccount to serviceAccountName
@@ -206,19 +223,6 @@ func addDefaultingFuncs() {
 				obj.APIVersion = "v1"
 			}
 		},
-		func(obj *ResourceRequirements) {
-			// Set requests to limits if requests are not specified (but limits are).
-			if obj.Limits != nil {
-				if obj.Requests == nil {
-					obj.Requests = make(ResourceList)
-				}
-				for key, value := range obj.Limits {
-					if _, exists := obj.Requests[key]; !exists {
-						obj.Requests[key] = *(value.Copy())
-					}
-				}
-			}
-		},
 		func(obj *LimitRangeItem) {
 			// for container limits, we apply default values
 			if obj.Type == LimitTypeContainer {
@@ -250,6 +254,9 @@ func addDefaultingFuncs() {
 				}
 			}
 		},
+		func(obj *SecurityContextConstraints) {
+			defaultSecurityContextConstraints(obj)
+		},
 	)
 }
 
@@ -260,6 +267,26 @@ func defaultHostNetworkPorts(containers *[]Container) {
 			if (*containers)[i].Ports[j].HostPort == 0 {
 				(*containers)[i].Ports[j].HostPort = (*containers)[i].Ports[j].ContainerPort
 			}
+		}
+	}
+}
+
+// Default SCCs for new fields.  Defaults are based on the RunAsUser type if not explicitly set.
+// If the SCC allows RunAsAny UID then the FSGroup/SupGroups will default to RunAsAny.  Otherwise
+// default to MustRunAs with namespace allocation.
+func defaultSecurityContextConstraints(scc *SecurityContextConstraints) {
+	if len(scc.FSGroup.Type) == 0 {
+		if scc.RunAsUser.Type == RunAsUserStrategyRunAsAny {
+			scc.FSGroup.Type = FSGroupStrategyRunAsAny
+		} else {
+			scc.FSGroup.Type = FSGroupStrategyMustRunAs
+		}
+	}
+	if len(scc.SupplementalGroups.Type) == 0 {
+		if scc.RunAsUser.Type == RunAsUserStrategyRunAsAny {
+			scc.SupplementalGroups.Type = SupplementalGroupsStrategyRunAsAny
+		} else {
+			scc.SupplementalGroups.Type = SupplementalGroupsStrategyMustRunAs
 		}
 	}
 }

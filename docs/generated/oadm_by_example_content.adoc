@@ -92,7 +92,7 @@ Sets a user entry in kubeconfig
 
 
 == oadm config view
-displays Merged kubeconfig settings or a specified kubeconfig file.
+Displays merged kubeconfig settings or a specified kubeconfig file.
 
 ====
 
@@ -217,18 +217,18 @@ Join project network
 ====
 
 
-== oadm pod-network unisolate-projects
-UnIsolate project network
+== oadm pod-network make-projects-global
+Make project network global
 
 ====
 
 [options="nowrap"]
 ----
 	# Allow project p1 to access all pods in the cluster and vice versa
-	$ openshift admin pod-network unisolate-projects <p1>
+	$ openshift admin pod-network make-projects-global <p1>
 
 	# Allow all projects with label name=share to access all pods in the cluster and vice versa
-	$ openshift admin pod-network unisolate-projects --selector='name=share'
+	$ openshift admin pod-network make-projects-global --selector='name=share'
 ----
 ====
 
@@ -277,6 +277,26 @@ Replace cluster roles to match the recommended bootstrap policy
 ====
 
 
+== oadm policy reconcile-sccs
+Replace cluster SCCs to match the recommended bootstrap policy
+
+====
+
+[options="nowrap"]
+----
+  # Display the cluster SCCs that would be modified
+  $ openshift admin policy reconcile-sccs
+
+  # Update cluster SCCs that don't match the current defaults preserving additional grants
+  # for users and group and keeping any priorities that are already set
+  $ openshift admin policy reconcile-sccs --confirm
+
+  # Replace existing users, groups, and priorities that do not match defaults
+  $ openshift admin policy reconcile-sccs --additive-only=false --confirm
+----
+====
+
+
 == oadm registry
 Install the integrated Docker registry
 
@@ -287,14 +307,14 @@ Install the integrated Docker registry
   # Check if default Docker registry ("docker-registry") has been created
   $ openshift admin registry --dry-run
 
-  # See what the registry would look like if created
-  $ openshift admin registry -o json
+  # See what the registry will look like if created
+  $ openshift admin registry -o json --credentials=/path/to/registry-user.kubeconfig
 
   # Create a registry if it does not exist with two replicas
-  $ openshift admin registry --replicas=2 --credentials=registry-user.kubeconfig
+  $ openshift admin registry --replicas=2 --credentials=/path/to/registry-user.kubeconfig
 
   # Use a different registry image and see the registry configuration
-  $ openshift admin registry -o yaml --images=myrepo/docker-registry:mytag
+  $ openshift admin registry -o yaml --images=myrepo/docker-registry:mytag --credentials=/path/to/registry-user.kubeconfig
 ----
 ====
 

@@ -2,10 +2,13 @@ package sti
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/golang/glog"
 	"github.com/openshift/source-to-image/pkg/api"
@@ -66,7 +69,7 @@ type STI struct {
 // If the layeredBuilder parameter is specified, then the builder provided will
 // be used for the case that the base Docker image does not have 'tar' or 'bash'
 // installed.
-func New(req *api.Config) (*STI, error) {
+func New(req *api.Config, overrides build.Overrides) (*STI, error) {
 	docker, err := dockerpkg.New(req.DockerConfig, req.PullAuthentication)
 	if err != nil {
 		return nil, err
@@ -99,13 +102,18 @@ func New(req *api.Config) (*STI, error) {
 
 	// The sources are downloaded using the GIT downloader.
 	// TODO: Add more SCM in future.
-	b.source, req.Source, err = scm.DownloaderForSource(req.Source)
-	if err != nil {
-		return nil, err
+	b.source = overrides.Downloader
+	if b.source == nil {
+		downloader, sourceURL, err := scm.DownloaderForSource(req.Source)
+		if err != nil {
+			return nil, err
+		}
+		b.source = downloader
+		req.Source = sourceURL
 	}
 
 	b.garbage = &build.DefaultCleaner{b.fs, b.docker}
-	b.layered, err = layered.New(req, b)
+	b.layered, err = layered.New(req, b, overrides)
 
 	// Set interfaces
 	b.preparer = b
@@ -168,8 +176,10 @@ func (b *STI) Build(config *api.Config) (*api.Result, error) {
 // struct Build func leverages the STI struct Prepare func directly below
 func (b *STI) Prepare(config *api.Config) error {
 	var err error
-	if config.WorkingDir, err = b.fs.CreateWorkingDirectory(); err != nil {
-		return err
+	if len(config.WorkingDir) == 0 {
+		if config.WorkingDir, err = b.fs.CreateWorkingDirectory(); err != nil {
+			return err
+		}
 	}
 
 	b.result = &api.Result{
@@ -352,6 +362,7 @@ func (b *STI) Save(config *api.Config) (err error) {
 		Stdout:          outWriter,
 		Stderr:          errWriter,
 		OnStart:         extractFunc,
+		NetworkMode:     string(config.DockerNetworkMode),
 	}
 
 	go dockerpkg.StreamContainerIO(errReader, nil, glog.Error)
@@ -373,18 +384,6 @@ func (b *STI) Execute(command string, config *api.Config) error {
 	}
 
 	buildEnv := append(scripts.ConvertEnvironment(env), b.generateConfigEnv()...)
-
-	uploadDir := filepath.Join(config.WorkingDir, "upload")
-	tarFileName, err := b.tar.CreateTarFile(config.WorkingDir, uploadDir)
-	if err != nil {
-		return err
-	}
-
-	tarFile, err := b.fs.Open(tarFileName)
-	if err != nil {
-		return err
-	}
-	defer tarFile.Close()
 
 	errOutput := ""
 	outReader, outWriter := io.Pipe()
@@ -409,9 +408,30 @@ func (b *STI) Execute(command string, config *api.Config) error {
 		Command:         command,
 		Env:             buildEnv,
 		PostExec:        b.postExecutor,
+		NetworkMode:     string(config.DockerNetworkMode),
 	}
+
 	if !config.LayeredBuild {
-		opts.Stdin = tarFile
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		uploadDir := filepath.Join(config.WorkingDir, "upload")
+
+		// TODO: be able to pass a stream directly to the Docker build to avoid the double temp hit
+		r, w := io.Pipe()
+		go func() {
+			var err error
+			defer func() {
+				w.CloseWithError(err)
+				if r := recover(); r != nil {
+					glog.Errorf("recovered panic: %#v", r)
+				}
+				wg.Done()
+			}()
+			err = b.tar.CreateTarStream(uploadDir, false, w)
+		}()
+
+		opts.Stdin = r
+		defer wg.Wait()
 	}
 
 	go func(reader io.Reader) {
@@ -426,9 +446,16 @@ func (b *STI) Execute(command string, config *api.Config) error {
 				}
 				break
 			}
-			if glog.V(2) || config.Quiet != true || command == api.Usage {
-				glog.Info(text)
+			// Nothing is printed when the quiet option is set
+			if config.Quiet {
+				continue
 			}
+			// The log level > 3 forces to use glog instead of printing to stdout
+			if glog.V(3) {
+				glog.Info(text)
+				continue
+			}
+			fmt.Fprintf(os.Stdout, "%s\n", strings.TrimSpace(text))
 		}
 	}(outReader)
 

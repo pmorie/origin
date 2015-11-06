@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"regexp"
+	"strings"
 	"testing"
 
 	_ "k8s.io/kubernetes/pkg/api/latest"
 	"k8s.io/kubernetes/pkg/util"
 
 	"github.com/openshift/origin/pkg/api/latest"
+	"github.com/openshift/origin/pkg/api/v1"
 	"github.com/openshift/origin/pkg/api/v1beta3"
 	"github.com/openshift/origin/pkg/template/api"
 	"github.com/openshift/origin/pkg/template/generator"
@@ -164,8 +167,9 @@ func TestProcessValueEscape(t *testing.T) {
 		t.Fatalf("unexpected error during encoding Config: %#v", err)
 	}
 	expect := `{"kind":"Template","apiVersion":"v1beta3","metadata":{"creationTimestamp":null},"objects":[{"apiVersion":"v1beta31","kind":"Service","metadata":{"labels":{"key1":"1","key2":"$1"}}}],"parameters":[{"name":"VALUE","value":"1"}]}`
-	if expect != string(result) {
-		t.Errorf("unexpected output: %s", util.StringDiff(expect, string(result)))
+	stringResult := strings.TrimSpace(string(result))
+	if expect != stringResult {
+		t.Errorf("unexpected output: %s", util.StringDiff(expect, stringResult))
 	}
 }
 
@@ -322,8 +326,52 @@ func TestEvaluateLabels(t *testing.T) {
 		}
 		expect := testCase.Output
 		expect = trailingWhitespace.ReplaceAllString(expect, "")
-		if expect != string(result) {
-			t.Errorf("%s: unexpected output: %s", k, util.StringDiff(expect, string(result)))
+		stringResult := strings.TrimSpace(string(result))
+		if expect != stringResult {
+			t.Errorf("%s: unexpected output: %s", k, util.StringDiff(expect, stringResult))
+			continue
+		}
+	}
+}
+
+func TestEvaluateTypes(t *testing.T) {
+	testCases := []string{
+		`0`,
+		fmt.Sprintf("%d", math.MaxInt64),
+		fmt.Sprintf("%d", math.MinInt64),
+		`""`,
+		`"Iñtërnâtiônàlizætiøn"`,
+	}
+
+	for _, testCase := range testCases {
+
+		testJSON := fmt.Sprintf(`{"kind":"Template","apiVersion":"v1","metadata":{"creationTimestamp":null},"objects":[{"apiVersion":"v1","kind":"Obj","testData":%s}]}`, testCase)
+
+		var template api.Template
+		if err := latest.Codec.DecodeInto([]byte(testJSON), &template); err != nil {
+			t.Errorf("%s: unexpected error: %v", testCase, err)
+			continue
+		}
+
+		generators := map[string]generator.Generator{
+			"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(1337))),
+		}
+		processor := NewProcessor(generators)
+
+		// Transform the template config into the result config
+		errs := processor.Process(&template)
+		if len(errs) > 0 {
+			t.Errorf("%s: unexpected error: %v", testCase, errs)
+			continue
+		}
+		result, err := v1.Codec.Encode(&template)
+		if err != nil {
+			t.Errorf("%s: unexpected error: %v", testCase, err)
+			continue
+		}
+		stringResult := strings.TrimSpace(string(result))
+		if testJSON != stringResult {
+			t.Errorf("%s: unexpected output: %s\n\n%#v", testCase, util.StringDiff(testJSON, stringResult), template)
 			continue
 		}
 	}

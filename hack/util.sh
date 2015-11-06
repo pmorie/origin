@@ -14,7 +14,8 @@ function setup_env_vars {
 
 	export ETCD_PORT="${ETCD_PORT:-4001}"
 	export ETCD_PEER_PORT="${ETCD_PEER_PORT:-7001}"
-	export API_HOST="${API_HOST:-$(openshift start --print-ip)}"
+	export API_BIND_HOST="${API_BIND_HOST:-$(openshift start --print-ip)}"
+	export API_HOST="${API_HOST:-${API_BIND_HOST}}"
 	export API_PORT="${API_PORT:-8443}"
 	export LOG_DIR="${LOG_DIR:-${BASETMPDIR}/logs}"
 	export ETCD_DATA_DIR="${BASETMPDIR}/etcd"
@@ -24,7 +25,8 @@ function setup_env_vars {
 	export MASTER_ADDR="${API_SCHEME}://${API_HOST}:${API_PORT}"
 	export PUBLIC_MASTER_HOST="${PUBLIC_MASTER_HOST:-${API_HOST}}"
 	export KUBELET_SCHEME="${KUBELET_SCHEME:-https}"
-	export KUBELET_HOST="${KUBELET_HOST:-127.0.0.1}"
+	export KUBELET_BIND_HOST="${KUBELET_BIND_HOST:-$(openshift start --print-ip)}"
+	export KUBELET_HOST="${KUBELET_HOST:-${KUBELET_BIND_HOST}}"
 	export KUBELET_PORT="${KUBELET_PORT:-10250}"
 	export SERVER_CONFIG_DIR="${BASETMPDIR}/openshift.local.config"
 	export MASTER_CONFIG_DIR="${SERVER_CONFIG_DIR}/master"
@@ -62,7 +64,7 @@ function setup_env_vars {
 function configure_os_server {
 	# find the same IP that openshift start will bind to.	This allows access from pods that have to talk back to master
 	if [[ -z "${ALL_IP_ADDRESSES-}" ]]; then
-		ALL_IP_ADDRESSES=`ifconfig | grep "inet " | sed 's/adr://' | awk '{print $2}'`
+		ALL_IP_ADDRESSES="$(openshift start --print-ip)"
 		SERVER_HOSTNAME_LIST="${PUBLIC_MASTER_HOST},localhost"
 
 		while read -r IP_ADDRESS
@@ -84,7 +86,7 @@ function configure_os_server {
 
 	echo "[INFO] Creating OpenShift node config"
 	openshift admin create-node-config \
-	--listen="${KUBELET_SCHEME}://0.0.0.0:${KUBELET_PORT}" \
+	--listen="${KUBELET_SCHEME}://${KUBELET_BIND_HOST}:${KUBELET_PORT}" \
 	--node-dir="${NODE_CONFIG_DIR}" \
 	--node="${KUBELET_HOST}" \
 	--hostnames="${KUBELET_HOST}" \
@@ -101,7 +103,7 @@ function configure_os_server {
 	openshift start \
 	--write-config=${SERVER_CONFIG_DIR} \
 	--create-certs=false \
-	--listen="${API_SCHEME}://0.0.0.0:${API_PORT}" \
+	--listen="${API_SCHEME}://${API_BIND_HOST}:${API_PORT}" \
 	--master="${MASTER_ADDR}" \
 	--public-master="${API_SCHEME}://${PUBLIC_MASTER_HOST}:${API_PORT}" \
 	--hostname="${KUBELET_HOST}" \
@@ -146,17 +148,17 @@ function start_os_server {
 	 --master-config=${MASTER_CONFIG_DIR}/master-config.yaml \
 	 --node-config=${NODE_CONFIG_DIR}/node-config.yaml \
 	 --loglevel=4 \
-	&> "${LOG_DIR}/openshift.log" &
+	&>"${LOG_DIR}/openshift.log" &
 	export OS_PID=$!
 
 	echo "[INFO] OpenShift server start at: "
 	date
-	
-	wait_for_url "${KUBELET_SCHEME}://${KUBELET_HOST}:${KUBELET_PORT}/healthz" "[INFO] kubelet: " 0.5 60
+
 	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz" "apiserver: " 0.25 80
+	wait_for_url "${KUBELET_SCHEME}://${KUBELET_HOST}:${KUBELET_PORT}/healthz" "[INFO] kubelet: " 0.5 60
 	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz/ready" "apiserver(ready): " 0.25 80
 	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/api/v1/nodes/${KUBELET_HOST}" "apiserver(nodes): " 0.25 80
-	
+
 	echo "[INFO] OpenShift server health checks done at: "
 	date
 }
@@ -181,7 +183,7 @@ function start_os_master {
 	${sudo} env "PATH=${PATH}" OPENSHIFT_PROFILE=web OPENSHIFT_ON_PANIC=crash openshift start master \
 	 --config=${MASTER_CONFIG_DIR}/master-config.yaml \
 	 --loglevel=4 \
-	&> "${LOG_DIR}/openshift.log" &
+	&>"${LOG_DIR}/openshift.log" &
 	export OS_PID=$!
 
 	echo "[INFO] OpenShift server start at: "
@@ -194,7 +196,7 @@ function start_os_master {
 	date
 }
 # ensure_iptables_or_die tests if the testing machine has iptables available
-# and in PATH. Also test whether current user has sudo privileges.	
+# and in PATH. Also test whether current user has sudo privileges.
 function ensure_iptables_or_die {
 	if [[ -z "$(which iptables)" ]]; then
 		echo "IPTables not found - the end-to-end test requires a system with iptables for Kubernetes services."
@@ -215,10 +217,24 @@ function ensure_iptables_or_die {
 	set -e
 }
 
-# tryuntil loops up to 60 seconds to redo this action
+# tryuntil loops, retrying an action until it succeeds a 90
 function tryuntil {
-	timeout=$(($(date +%s) + 60))
-	until eval "${@}" || [[ $(date +%s) -gt $timeout ]]; do :; done
+	timeout=$(($(date +%s) + 90))
+	echo "++ Retrying until success or timeout: ${@}"
+	while [ 1 ]; do
+		if eval "${@}" >/dev/null 2>&1; then
+			return 0
+		fi
+		if [[ $(date +%s) -gt $timeout ]]; then
+			# run it one more time so we can display the output
+			# for debugging, since above we /dev/null the output
+			if eval "${@}"; then
+				return 0
+			fi
+			echo "++ timed out"
+			return 1
+		fi
+	done
 }
 
 # wait_for_command executes a command and waits for it to
@@ -586,7 +602,7 @@ function os::build:wait_for_start() {
 function os::build:wait_for_end() {
 	echo "[INFO] Waiting for $1 namespace build to complete"
 	wait_for_command "oc get -n $1 builds | grep -i complete" $((10*TIME_MIN)) "oc get -n $1 builds | grep -i -e failed -e error"
-	BUILD_ID=`oc get -n $1 builds --output-version=v1beta3 --template="{{with index .items 0}}{{.metadata.name}}{{end}}"`
+	BUILD_ID=`oc get -n $1 builds --output-version=v1 --template="{{with index .items 0}}{{.metadata.name}}{{end}}"`
 	echo "[INFO] Build ${BUILD_ID} finished"
 	# TODO: fix
 	set +e
@@ -604,15 +620,15 @@ SELINUX_DISABLED=0
 function enable-selinux {
   if [ "${SELINUX_DISABLED}" = "1" ]; then
     os::log::info "Re-enabling selinux enforcement"
-    setenforce 1
+    sudo setenforce 1
     SELINUX_DISABLED=0
   fi
 }
 
 function disable-selinux {
-  if selinuxenabled; then
+  if selinuxenabled && [ "$(getenforce)" = "Enforcing" ]; then
     os::log::info "Temporarily disabling selinux enforcement"
-    setenforce 0
+    sudo setenforce 0
     SELINUX_DISABLED=1
   fi
 }
@@ -722,14 +738,17 @@ find_files() {
 os::util::run-extended-tests() {
   local config_root=$1
   local focus_regex=$2
-  local skip_regex=${3:-}
-  local log_path=${4:-}
+  local binary_name=${3:-extended.test}
+  local skip_regex=${4:-}
+  local log_path=${5:-}
 
   export KUBECONFIG="${config_root}/openshift.local.config/master/admin.kubeconfig"
   export EXTENDED_TEST_PATH="${OS_ROOT}/test/extended"
 
-  local test_cmd="ginkgo -progress -stream -v -focus=\"${focus_regex}\" \
--skip=\"${skip_regex}\" ${OS_OUTPUT_BINPATH}/extended.test"
+  local ginkgo_cmd="${OS_ROOT}/_output/local/go/bin/ginkgo"
+  local test_cmd="${ginkgo_cmd} -progress -stream -v \
+-focus=\"${focus_regex}\" -skip=\"${skip_regex}\" \
+${OS_OUTPUT_BINPATH}/${binary_name}"
   if [ "${log_path}" != "" ]; then
     test_cmd="${test_cmd} | tee ${log_path}"
   fi
@@ -750,15 +769,16 @@ os::util::run-net-extended-tests() {
   if [ -z "${skip_regex}" ]; then
       # The intra-pod test is currently broken for origin.
       skip_regex='Networking.*intra-pod'
+      local conf_path="${config_root}/openshift.local.config"
       # Only the multitenant plugin can pass the isolation test
       if ! grep -q 'redhat/openshift-ovs-multitenant' \
-           $(find "${config_root}" -name 'node-config.yaml' | head -n 1); then
+           $(find "${conf_path}" -name 'node-config.yaml' | head -n 1); then
         skip_regex="(${skip_regex}|networking: isolation)"
       fi
   fi
 
   os::util::run-extended-tests "${config_root}" "${focus_regex}" \
-    "${skip_regex}" "${log_path}"
+    networking.test "${skip_regex}" "${log_path}"
 }
 
 # Asks golang what it thinks the host platform is.  The go tool chain does some
@@ -772,5 +792,24 @@ os::util::sed() {
   	sed -i '' $@
   else
   	sed -i'' $@
+  fi
+}
+
+os::util::get_object_assert() {
+  local object=$1
+  local request=$2
+  local expected=$3
+
+  res=$(eval oc get $object -o go-template=\"$request\")
+
+  if [[ "$res" =~ ^$expected$ ]]; then
+      echo "Successful get $object $request: $res"
+      return 0
+  else
+      echo "FAIL!"
+      echo "Get $object $request"
+      echo "  Expected: $expected"
+      echo "  Got:      $res"
+      return 1
   fi
 }

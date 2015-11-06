@@ -3,14 +3,17 @@
 %global gopath      %{_datadir}/gocode
 %global import_path github.com/openshift/origin
 %global kube_plugin_path /usr/libexec/kubernetes/kubelet-plugins/net/exec/redhat~openshift-ovs-subnet
-%global sdn_import_path github.com/openshift/openshift-sdn
+%global sdn_import_path github.com/openshift/openshift-sdn/pkg
 
 # docker_version is the version of docker requires by packages
-%global docker_version 1.6.2
+%global docker_version 1.8.2
 # tuned_version is the version of tuned requires by packages
 %global tuned_version  2.3
 # openvswitch_version is the version of openvswitch requires by packages
 %global openvswitch_version 2.3.1
+# this is the version we obsolete up to. The packaging changed for Origin
+# 1.0.6 and OSE 3.1 such that 'openshift' package names were no longer used.
+%global package_refector_version 3.0.2.900
 # %commit and %ldflags are intended to be set by tito custom builders provided
 # in the .tito/lib directory. The values in this spec file will not be kept up to date.
 %{!?commit:
@@ -43,7 +46,8 @@ Source0:        https://%{import_path}/archive/%{commit}/%{name}-%{version}.tar.
 BuildRequires:  systemd
 BuildRequires:  golang >= 1.4
 Requires:       %{name}-clients = %{version}-%{release}
-Obsoletes:      openshift < 1.0.6
+Requires:       iptables
+Obsoletes:      openshift < %{package_refector_version}
 
 %description
 %{summary}
@@ -54,7 +58,7 @@ Requires:       %{name} = %{version}-%{release}
 Requires(post):   systemd
 Requires(preun):  systemd
 Requires(postun): systemd
-Obsoletes:      openshift-master < 1.0.6
+Obsoletes:      openshift-master < %{package_refector_version}
 
 %description master
 %{summary}
@@ -71,7 +75,7 @@ Requires:       ethtool
 Requires(post):   systemd
 Requires(preun):  systemd
 Requires(postun): systemd
-Obsoletes:      openshift-node < 1.0.6
+Obsoletes:      openshift-node < %{package_refector_version}
 
 %description node
 %{summary}
@@ -79,14 +83,14 @@ Obsoletes:      openshift-node < 1.0.6
 %package -n tuned-profiles-%{name}-node
 Summary:        Tuned profiles for %{product_name} Node hosts
 Requires:       tuned >= %{tuned_version}
-Obsoletes:      tuned-profiles-openshift-node < 1.0.6
+Obsoletes:      tuned-profiles-openshift-node < %{package_refector_version}
 
 %description -n tuned-profiles-%{name}-node
 %{summary}
 
 %package clients
 Summary:        %{product_name} Client binaries for Linux
-Obsoletes:      openshift-clients < 1.0.6
+Obsoletes:      openshift-clients < %{package_refector_version}
 
 %description clients
 %{summary}
@@ -95,7 +99,7 @@ Obsoletes:      openshift-clients < 1.0.6
 Summary:        %{product_name} Client binaries for Linux, Mac OSX, and Windows
 BuildRequires:  golang-pkg-darwin-amd64
 BuildRequires:  golang-pkg-windows-386
-Obsoletes:      openshift-clients-redistributable < 1.0.6
+Obsoletes:      openshift-clients-redistributable < %{package_refector_version}
 
 %description clients-redistributable
 %{summary}
@@ -120,7 +124,7 @@ Requires:         openvswitch >= %{openvswitch_version}
 Requires:         %{name}-node = %{version}-%{release}
 Requires:         bridge-utils
 Requires:         ethtool
-Obsoletes:        openshift-sdn-ovs < 1.0.6
+Obsoletes:        openshift-sdn-ovs < %{package_refector_version}
 
 %description sdn-ovs
 %{summary}
@@ -308,11 +312,7 @@ fi
 # Create master config and certs if both do not exist
 if [[ ! -e %{_sysconfdir}/origin/master/master-config.yaml &&
      ! -e %{_sysconfdir}/origin/master/ca.crt ]]; then
-%if "%{dist}" == ".el7aos"
-  %{_bindir}/atomic-enterprise start master --write-config=%{_sysconfdir}/origin/master
-%else
   %{_bindir}/openshift start master --write-config=%{_sysconfdir}/origin/master
-%endif
   # Create node configs if they do not already exist
   if ! find %{_sysconfdir}/origin/ -type f -name "node-config.yaml" | grep -E "node-config.yaml"; then
     %{_bindir}/oadm create-node-config --node-dir=%{_sysconfdir}/origin/node/ --node=localhost --hostnames=localhost,127.0.0.1 --node-client-certificate-authority=%{_sysconfdir}/origin/master/ca.crt --signer-cert=%{_sysconfdir}/origin/master/ca.crt --signer-key=%{_sysconfdir}/origin/master/ca.key --signer-serial=%{_sysconfdir}/origin/master/ca.serial.txt --certificate-authority=%{_sysconfdir}/origin/master/ca.crt

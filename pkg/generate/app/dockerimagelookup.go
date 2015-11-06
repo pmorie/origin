@@ -76,11 +76,9 @@ func (r DockerClientSearcher) Search(terms ...string) (ComponentMatches, error) 
 				return nil, err
 			}
 
-			if len(ref.Registry) == 0 {
-				ref.Registry = "local Docker"
-			}
 			if len(ref.Tag) == 0 {
 				ref.Tag = imageapi.DefaultImageTag
+				term = fmt.Sprintf("%s:%s", term, imageapi.DefaultImageTag)
 			}
 			for _, image := range images {
 				if tags := matchTag(image, term, ref.Registry, ref.Namespace, ref.Name, ref.Tag); len(tags) > 0 {
@@ -115,7 +113,6 @@ func (r DockerClientSearcher) Search(terms ...string) (ComponentMatches, error) 
 				Argument:    fmt.Sprintf("--docker-image=%q", match.Value),
 				Name:        match.Value,
 				Description: descriptionFor(dockerImage, match.Value, ref.Registry, ""),
-				Builder:     IsBuilderImage(dockerImage),
 				Score:       match.Score,
 				Image:       dockerImage,
 				ImageTag:    ref.Tag,
@@ -127,26 +124,33 @@ func (r DockerClientSearcher) Search(terms ...string) (ComponentMatches, error) 
 		}
 
 		componentMatches = append(componentMatches, termMatches...)
-
-		// if we didn't find it remotely or locally, but the user chose to
-		// allow missing images, create an exact match for the value they
-		// provided.
-		if len(componentMatches) == 0 && r.AllowMissingImages {
-			componentMatches = append(componentMatches, &ComponentMatch{
-				Value:     term,
-				Score:     0.0,
-				Builder:   true,
-				LocalOnly: true,
-			})
-			glog.V(4).Infof("Appended missing match %v", term)
-
-		}
 	}
 
 	if len(errs) != 0 {
 		return nil, utilerrors.NewAggregate(errs)
 	}
 
+	return componentMatches, nil
+}
+
+// MissingImageSearcher always returns an exact match for the item being searched for.
+// It should be used with very high weight(weak priority) as a result of last resort when the
+// user has indicated they want to allow missing images(not found in the docker registry
+// or locally) to be used anyway.
+type MissingImageSearcher struct {
+}
+
+// Search always returns an exact match for the search terms.
+func (r MissingImageSearcher) Search(terms ...string) (ComponentMatches, error) {
+	componentMatches := ComponentMatches{}
+	for _, term := range terms {
+		componentMatches = append(componentMatches, &ComponentMatch{
+			Value:     term,
+			Score:     0.0,
+			LocalOnly: true,
+		})
+		glog.V(4).Infof("Added missing match for %v", term)
+	}
 	return componentMatches, nil
 }
 
@@ -180,7 +184,10 @@ func (r DockerRegistrySearcher) Search(terms ...string) (ComponentMatches, error
 		image, err := connection.ImageByTag(ref.Namespace, ref.Name, ref.Tag)
 		if err != nil {
 			if dockerregistry.IsNotFound(err) {
-				return nil, ErrNoMatch{value: term, qualifier: err.Error()}
+				if dockerregistry.IsTagNotFound(err) {
+					glog.V(4).Infof("tag not found: %v", err)
+				}
+				continue
 			}
 			return nil, fmt.Errorf("can't connect to %q: %v", ref.Registry, err)
 		}
@@ -203,10 +210,10 @@ func (r DockerRegistrySearcher) Search(terms ...string) (ComponentMatches, error
 			Argument:    fmt.Sprintf("--docker-image=%q", term),
 			Name:        term,
 			Description: descriptionFor(dockerImage, term, ref.Registry, ref.Tag),
-			Builder:     IsBuilderImage(dockerImage),
 			Score:       0,
 			Image:       dockerImage,
 			ImageTag:    ref.Tag,
+			Insecure:    r.AllowInsecure,
 			Meta:        map[string]string{"registry": ref.Registry},
 		})
 	}
@@ -215,10 +222,7 @@ func (r DockerRegistrySearcher) Search(terms ...string) (ComponentMatches, error
 }
 
 func descriptionFor(image *imageapi.DockerImage, value, from string, tag string) string {
-	shortID := image.ID
-	if len(shortID) > 7 {
-		shortID = shortID[:7]
-	}
+	shortID := imageapi.ShortDockerImageID(image, 7)
 	tagPart := ""
 	if len(tag) > 0 {
 		tagPart = fmt.Sprintf(" (tag %q)", tag)
@@ -238,12 +242,10 @@ func descriptionFor(image *imageapi.DockerImage, value, from string, tag string)
 }
 
 func matchTag(image docker.APIImages, value, registry, namespace, name, tag string) []*ComponentMatch {
-	if len(tag) == 0 {
-		tag = imageapi.DefaultImageTag
-	}
 	matches := []*ComponentMatch{}
 	for _, s := range image.RepoTags {
 		if value == s {
+			glog.V(4).Infof("exact match on %q", s)
 			matches = append(matches, &ComponentMatch{
 				Value: s,
 				Score: 0.0,

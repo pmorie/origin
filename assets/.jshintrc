@@ -20,6 +20,8 @@
   "unused": true,
   "globals": {
     "angular": false,
+    "c3": false,
+    "d3": false,
     "hawtioPluginLoader": false,
     "HawtioCore": false,
     "Logger" : false,
@@ -29,6 +31,7 @@
     "URI": false,
     "ZeroClipboard": false,
     "$": false,
-    "_" : false
+    "_" : false,
+    "URITemplate": false
   }
 }

@@ -6,6 +6,11 @@ html, body {
   height: 100%;
 }
 
+// See https://docs.angularjs.org/api/ng/directive/ngCloak
+[ng\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak {
+  display: none !important;
+}
+
 .console-os {
   background-color: @body-bg;
   height: ~"calc(100% - 121px)"; // removes scrollbar on pages with less than full viewport content
@@ -54,7 +59,7 @@ html, body {
         border-top: 1px solid @navbar-pf-navbar-header-border-color;
       }
     }
-    .navbar-brand { 
+    .navbar-brand {
       border: 0;
       margin-left: 20px;
       margin-top: 4px;
@@ -270,6 +275,30 @@ html, body {
     }
   }
 
+.pod-metrics {
+  .metrics-options {
+    .form-group {
+      margin-bottom: 0;
+    }
+    .select-container {
+      display: inline-block;
+    }
+    @media (min-width: @screen-sm-min) {
+      .form-group {
+        display: inline-block;
+      }
+      .select-container {
+        margin-right: 10px;
+      }
+    }
+  }
+  .metrics-chart {
+    // The utilization chart floats some elements, so this is needed for proper padding.
+    clear: both;
+    max-width: 800px;
+    padding-top: 5px;
+  }
+}
 
 // Create App
 // --------------------------------------------------
@@ -306,6 +335,7 @@ label.checkbox {
 
 .create-from-template,
 .create-from-image {
+  margin-bottom: 100px; // needed space for hover help text near bottom
   .template-name {
     text-align: right;
     span.fa {
@@ -483,7 +513,9 @@ label.checkbox {
   margin-left: 3px;
 }
 
+
 // Misc
+// TODO: pull out into _partials where it makes sense
 // --------------------------------------------------
 .action-inline {
   margin-left: @action-link-inline-margin;
@@ -504,7 +536,7 @@ label.required:before {
   padding: 0 4px;
 }
 .btn-lg, .btn-group-lg > .btn {
-  line-height: 1.334; // needed to make same height as inputs 
+  line-height: 1.334; // needed to make same height as inputs
 }
 
 code {
@@ -516,7 +548,11 @@ pre {
     background-color: #fff;
     border: none;
     border-left: 2px solid rgb(204, 204, 204);
-  }  
+  }
+}
+
+[data-toggle="tooltip"] {
+  cursor: pointer; // so tooltips get correct cursor
 }
 
 // Fix to override the Firefox 40+ behavior to add text-decoration
@@ -564,6 +600,7 @@ select:invalid {
 
 .truncate {
   // Bootstrap mixin
+  // Note: If truncating within a flex container then the parent needs a width
   .text-overflow();
 }
 
@@ -586,6 +623,11 @@ select:invalid {
 .spinner.spinner-xs { // set height & width to 12px so that FF displays correctly
   height: 12px;
   width: 12px;
+}
+
+.spinner.spinner-inverse {
+  border-color: rgba(0,153,211, .25);
+  border-top-color: rgba(0,153,211, .75);
 }
 
 .attention-message {
@@ -612,8 +654,13 @@ select:invalid {
   background-color: #f1f1f1;
   color: #666;
 }
+
 .input-number {
   width: 60px;
+}
+
+.deployment .replicas-form input {
+  display: inline-block;
 }
 
 .action-button {
@@ -621,6 +668,12 @@ select:invalid {
   cursor: pointer;
   &:hover {
     color: #000;
+  }
+}
+
+a.action-button {
+  &:hover, &:active, &:focus {
+    text-decoration: none;
   }
 }
 
@@ -637,13 +690,91 @@ select:invalid {
 }
 
 .status {
+  min-width: 130px;
   .status-icon {
     margin-right: 6px;
     width: 13px;
     text-align: center;
   }
 }
-
 pre.clipped {
   display: inline-block;
+}
+
+.k8s-label {
+  margin-right: 5px;
+  &:before {
+    content: ' ';
+    white-space: normal;
+  }
+  .label-pair {
+    margin-bottom: 2px;
+  .label {
+    &:first-child {
+      border-radius: 2px 0 0 2px;
+    }
+    &:last-child {
+      border-radius: 0 2px 2px 0;
+    }
+  }
+  .label-key {
+    background-color: #bee1f4;
+    color: #00659c;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    margin-left: 0;
+    font-size: 12px;
+  }
+  // if its a link
+  a.label-key {
+    &:hover, &:focus, &:active {
+      background-color: #00659c;
+      color: #FFFFFF;
+    }
+  }
+  .label-value {
+    background-color: #7dc3e8;
+    color: #FFFFFF;
+    margin-left: 0;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    font-size: 12px;
+  }
+  a.label-value {
+    &:hover, &:focus, &:active {
+      background-color: #00659c;
+    }
+  }
+  }
+}
+@media (max-width: @screen-sm-min) {
+  .k8s-label {
+  // enable label to truncate
+    width: 100%;
+    .label {
+      display: block;
+      min-width: 50px;
+    }
+    .label-pair {
+      width: 100%;
+    }
+  }
+}
+
+labels + .resource-details {
+  margin-top: 10px;
+}
+
+[flex].page-header {
+  // reduced for consistency if used with flex
+  margin-top: 21px;
+}
+
+.resource-details h3 {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+h1 small.meta {
+  font-size: 12px;
 }

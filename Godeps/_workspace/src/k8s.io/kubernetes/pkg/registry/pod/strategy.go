@@ -21,6 +21,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
@@ -105,6 +107,10 @@ func (podStrategy) CheckGracefulDelete(obj runtime.Object, options *api.DeleteOp
 	}
 	// if the pod is not scheduled, delete immediately
 	if len(pod.Spec.NodeName) == 0 {
+		period = 0
+	}
+	// if the pod is already terminated, delete immediately
+	if pod.Status.Phase == api.PodFailed || pod.Status.Phase == api.PodSucceeded {
 		period = 0
 	}
 	// ensure the options and the pod are in sync
@@ -252,6 +258,21 @@ func LogLocation(getter ResourceGetter, connInfo client.ConnectionInfoGetter, ct
 	}
 	if opts.Previous {
 		params.Add("previous", "true")
+	}
+	if opts.Timestamps {
+		params.Add("timestamps", "true")
+	}
+	if opts.SinceSeconds != nil {
+		params.Add("sinceSeconds", strconv.FormatInt(*opts.SinceSeconds, 10))
+	}
+	if opts.SinceTime != nil {
+		params.Add("sinceTime", opts.SinceTime.Format(time.RFC3339))
+	}
+	if opts.TailLines != nil {
+		params.Add("tailLines", strconv.FormatInt(*opts.TailLines, 10))
+	}
+	if opts.LimitBytes != nil {
+		params.Add("limitBytes", strconv.FormatInt(*opts.LimitBytes, 10))
 	}
 	loc := &url.URL{
 		Scheme:   nodeScheme,

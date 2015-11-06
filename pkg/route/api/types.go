@@ -2,12 +2,13 @@ package api
 
 import (
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/util"
 )
 
 // Route encapsulates the inputs needed to connect an alias to endpoints.
 type Route struct {
-	kapi.TypeMeta
+	unversioned.TypeMeta
 	kapi.ObjectMeta
 
 	// Spec is the desired behavior of the route
@@ -52,8 +53,8 @@ type RouteStatus struct {
 
 // RouteList is a collection of Routes.
 type RouteList struct {
-	kapi.TypeMeta
-	kapi.ListMeta
+	unversioned.TypeMeta
+	unversioned.ListMeta
 
 	// Items is a list of routes
 	Items []Route
@@ -88,10 +89,19 @@ type TLSConfig struct {
 	// DestinationCACertificate provides the contents of the ca certificate of the final destination.  When using reencrypt
 	// termination this file should be provided in order to have routers use it for health checks on the secure connection
 	DestinationCACertificate string `json:"destinationCACertificate,omitempty"`
+
+	// InsecureEdgeTerminationPolicy indicates the desired behavior for
+	// insecure connections to an edge-terminated route:
+	//   disable, allow or redirect
+	InsecureEdgeTerminationPolicy InsecureEdgeTerminationPolicyType `json:"insecureEdgeTerminationPolicy,omitempty"`
 }
 
 // TLSTerminationType dictates where the secure communication will stop
 type TLSTerminationType string
+
+// InsecureEdgeTerminationPolicyType dictates the behavior of insecure
+// connections to an edge-terminated route.
+type InsecureEdgeTerminationPolicyType string
 
 const (
 	// TLSTerminationEdge terminate encryption at the edge router.
@@ -100,4 +110,13 @@ const (
 	TLSTerminationPassthrough TLSTerminationType = "passthrough"
 	// TLSTerminationReencrypt terminate encryption at the edge router and re-encrypt it with a new certificate supplied by the destination
 	TLSTerminationReencrypt TLSTerminationType = "reencrypt"
+
+	// InsecureEdgeTerminationPolicyNone disables insecure connections for an edge-terminated route.
+	InsecureEdgeTerminationPolicyNone InsecureEdgeTerminationPolicyType = "None"
+	// InsecureEdgeTerminationPolicyAllow allows insecure connections for an edge-terminated route.
+	InsecureEdgeTerminationPolicyAllow InsecureEdgeTerminationPolicyType = "Allow"
+	// InsecureEdgeTerminationPolicyRedirect redirects insecure connections for an edge-terminated route.
+	// As an example, for routers that support HTTP and HTTPS, the
+	// insecure HTTP connections will be redirected to use HTTPS.
+	InsecureEdgeTerminationPolicyRedirect InsecureEdgeTerminationPolicyType = "Redirect"
 )

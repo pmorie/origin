@@ -44,8 +44,8 @@ import (
 	"github.com/openshift/origin/pkg/image/registry/imagestreamtag"
 	testutil "github.com/openshift/origin/test/util"
 
-	buildclonestorage "github.com/openshift/origin/pkg/build/registry/clone/generator"
-	buildinstantiatestorage "github.com/openshift/origin/pkg/build/registry/instantiate/generator"
+	buildclonestorage "github.com/openshift/origin/pkg/build/registry/buildclone"
+	buildinstantiatestorage "github.com/openshift/origin/pkg/build/registry/buildconfiginstantiate"
 )
 
 func init() {
@@ -192,7 +192,7 @@ func NewTestBuildOpenshift(t *testing.T) *testBuildOpenshift {
 	osMux := http.NewServeMux()
 	openshift.server = httptest.NewServer(osMux)
 
-	kubeClient := kclient.NewOrDie(&kclient.Config{Host: openshift.server.URL, Version: klatest.Version})
+	kubeClient := kclient.NewOrDie(&kclient.Config{Host: openshift.server.URL, Version: klatest.DefaultVersionForLegacyGroup()})
 	osClient := osclient.NewOrDie(&kclient.Config{Host: openshift.server.URL, Version: latest.Version})
 
 	openshift.Client = osClient
@@ -205,13 +205,16 @@ func NewTestBuildOpenshift(t *testing.T) *testBuildOpenshift {
 
 	handlerContainer := master.NewHandlerContainer(osMux)
 
+	storageDestinations := master.NewStorageDestinations()
+	storageDestinations.AddAPIGroup("", etcdHelper)
+
 	_ = master.New(&master.Config{
-		DatabaseStorage:  etcdHelper,
-		KubeletClient:    kubeletClient,
-		APIPrefix:        "/api",
-		AdmissionControl: admit.NewAlwaysAdmit(),
-		RestfulContainer: handlerContainer,
-		DisableV1:        false,
+		StorageDestinations: storageDestinations,
+		KubeletClient:       kubeletClient,
+		APIPrefix:           "/api",
+		AdmissionControl:    admit.NewAlwaysAdmit(),
+		RestfulContainer:    handlerContainer,
+		DisableV1:           false,
 	})
 
 	interfaces, _ := latest.InterfacesFor(latest.Version)
@@ -224,14 +227,14 @@ func NewTestBuildOpenshift(t *testing.T) *testBuildOpenshift {
 	imageStorage := imageetcd.NewREST(etcdHelper)
 	imageRegistry := image.NewRegistry(imageStorage)
 
-	imageStreamStorage, imageStreamStatus := imagestreametcd.NewREST(
+	imageStreamStorage, imageStreamStatus, internalStorage := imagestreametcd.NewREST(
 		etcdHelper,
 		imagestream.DefaultRegistryFunc(func() (string, bool) {
 			return "registry:3000", true
 		}),
 		&fakeSubjectAccessReviewRegistry{},
 	)
-	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatus)
+	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatus, internalStorage)
 
 	imageStreamImageStorage := imagestreamimage.NewREST(imageRegistry, imageStreamRegistry)
 	imageStreamImageRegistry := imagestreamimage.NewRegistry(imageStreamImageStorage)

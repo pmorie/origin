@@ -47,6 +47,9 @@ func (p *Processor) Process(template *api.Template) fielderrors.ValidationErrorL
 				continue
 			}
 			item = decodedObj
+			if strings.Contains(string(obj.RawJSON), "testData") {
+				fmt.Printf("\n\n%s\n%p\n\n", obj.RawJSON, item)
+			}
 		}
 
 		newItem, err := p.SubstituteParameters(template.Parameters, item)

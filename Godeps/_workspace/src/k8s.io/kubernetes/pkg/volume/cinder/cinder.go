@@ -62,8 +62,8 @@ func (plugin *cinderPlugin) GetAccessModes() []api.PersistentVolumeAccessMode {
 	}
 }
 
-func (plugin *cinderPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.VolumeOptions, mounter mount.Interface) (volume.Builder, error) {
-	return plugin.newBuilderInternal(spec, pod.UID, &CinderDiskUtil{}, mounter)
+func (plugin *cinderPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.VolumeOptions) (volume.Builder, error) {
+	return plugin.newBuilderInternal(spec, pod.UID, &CinderDiskUtil{}, plugin.host.GetMounter())
 }
 
 func (plugin *cinderPlugin) newBuilderInternal(spec *volume.Spec, podUID types.UID, manager cdManager, mounter mount.Interface) (volume.Builder, error) {
@@ -92,8 +92,8 @@ func (plugin *cinderPlugin) newBuilderInternal(spec *volume.Spec, podUID types.U
 		blockDeviceMounter: &cinderSafeFormatAndMount{mounter, exec.New()}}, nil
 }
 
-func (plugin *cinderPlugin) NewCleaner(volName string, podUID types.UID, mounter mount.Interface) (volume.Cleaner, error) {
-	return plugin.newCleanerInternal(volName, podUID, &CinderDiskUtil{}, mounter)
+func (plugin *cinderPlugin) NewCleaner(volName string, podUID types.UID) (volume.Cleaner, error) {
+	return plugin.newCleanerInternal(volName, podUID, &CinderDiskUtil{}, plugin.host.GetMounter())
 }
 
 func (plugin *cinderPlugin) newCleanerInternal(volName string, podUID types.UID, manager cdManager, mounter mount.Interface) (volume.Cleaner, error) {
@@ -151,6 +151,10 @@ func detachDiskLogError(cd *cinderVolume) {
 	if err != nil {
 		glog.Warningf("Failed to detach disk: %v (%v)", cd, err)
 	}
+}
+
+func (_ *cinderVolumeBuilder) SupportsOwnershipManagement() bool {
+	return true
 }
 
 func (b *cinderVolumeBuilder) SetUp() error {
@@ -219,6 +223,10 @@ func (b *cinderVolumeBuilder) SetUpAt(dir string) error {
 
 func (b *cinderVolumeBuilder) IsReadOnly() bool {
 	return b.readOnly
+}
+
+func (b *cinderVolumeBuilder) SupportsSELinux() bool {
+	return true
 }
 
 func makeGlobalPDName(host volume.VolumeHost, devName string) string {

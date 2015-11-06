@@ -14,6 +14,7 @@ import (
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 
 	"github.com/openshift/origin/pkg/cmd/cli/cmd"
+	"github.com/openshift/origin/pkg/cmd/cli/cmd/rsync"
 	"github.com/openshift/origin/pkg/cmd/cli/policy"
 	"github.com/openshift/origin/pkg/cmd/cli/secrets"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
@@ -79,7 +80,7 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 		{
 			Message: "Build and Deploy Commands:",
 			Commands: []*cobra.Command{
-				cmd.NewCmdStartBuild(fullName, f, out),
+				cmd.NewCmdStartBuild(fullName, f, in, out),
 				cmd.NewCmdBuildLogs(fullName, f, out),
 				cmd.NewCmdDeploy(fullName, f, out),
 				cmd.NewCmdRollback(fullName, f, out),
@@ -108,9 +109,10 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 		{
 			Message: "Troubleshooting and Debugging Commands:",
 			Commands: []*cobra.Command{
-				cmd.NewCmdLogs(fullName, f, out),
+				cmd.NewCmdExplain(fullName, f, out),
+				cmd.NewCmdLogs(cmd.LogsRecommendedName, fullName, f, out),
 				cmd.NewCmdRsh(cmd.RshRecommendedName, fullName, f, in, out, errout),
-				cmd.NewCmdRsync(cmd.RsyncRecommendedName, fullName, f, out, errout),
+				rsync.NewCmdRsync(rsync.RsyncRecommendedName, fullName, f, out, errout),
 				cmd.NewCmdExec(fullName, f, in, out, errout),
 				cmd.NewCmdPortForward(fullName, f),
 				cmd.NewCmdProxy(fullName, f, out),
@@ -121,6 +123,8 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 			Commands: []*cobra.Command{
 				cmd.NewCmdCreate(fullName, f, out),
 				cmd.NewCmdReplace(fullName, f, out),
+				// TODO decide what to do about apply.  Its doing unusual things
+				// cmd.NewCmdApply(fullName, f, out),
 				cmd.NewCmdPatch(fullName, f, out),
 				cmd.NewCmdProcess(fullName, f, out),
 				cmd.NewCmdExport(fullName, f, in, out),
@@ -128,6 +132,7 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 				cmd.NewCmdAttach(fullName, f, in, out, errout),
 				policy.NewCmdPolicy(policy.PolicyRecommendedName, fullName+" "+policy.PolicyRecommendedName, f, out),
 				secrets.NewCmdSecrets(secrets.SecretsRecommendedName, fullName+" "+secrets.SecretsRecommendedName, f, in, out, fullName+" edit"),
+				cmd.NewCmdConvert(fullName, f, out),
 			},
 		},
 		{
@@ -145,7 +150,7 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 		ExposeFlags(loginCmd, "certificate-authority", "insecure-skip-tls-verify")
 
 	if name == fullName {
-		cmds.AddCommand(version.NewVersionCommand(fullName))
+		cmds.AddCommand(version.NewVersionCommand(fullName, false))
 	}
 	cmds.AddCommand(cmd.NewCmdOptions(out))
 

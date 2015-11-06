@@ -19,6 +19,7 @@ function wait_for_app() {
   echo "[INFO] Waiting for app in namespace $1"
   echo "[INFO] Waiting for database pod to start"
   wait_for_command "oc get -n $1 pods -l name=database | grep -i Running" $((60*TIME_SEC))
+  oc logs dc/database -n $1 --follow
 
   echo "[INFO] Waiting for database service to start"
   wait_for_command "oc get -n $1 services | grep database" $((20*TIME_SEC))
@@ -26,6 +27,7 @@ function wait_for_app() {
 
   echo "[INFO] Waiting for frontend pod to start"
   wait_for_command "oc get -n $1 pods | grep frontend | grep -i Running" $((120*TIME_SEC))
+  oc logs dc/frontend -n $1 --follow
 
   echo "[INFO] Waiting for frontend service to start"
   wait_for_command "oc get -n $1 services | grep frontend" $((20*TIME_SEC))
@@ -41,6 +43,13 @@ function wait_for_app() {
   wait_for_command '[[ "$(curl -s -X POST http://${FRONTEND_IP}:5432/keys/foo -d value=1337)" = "Key created" ]]'
   wait_for_command '[[ "$(curl -s http://${FRONTEND_IP}:5432/keys/foo)" = "1337" ]]'
 }
+
+# service dns entry is visible via master service
+# find the IP of the master service by asking the API_HOST to verify DNS is running there
+MASTER_SERVICE_IP="$(dig @${API_HOST} "kubernetes.default.svc.cluster.local." +short A | head -n 1)"
+# find the IP of the master service again by asking the IP of the master service, to verify port 53 tcp/udp is routed by the service
+[ "$(dig +tcp @${MASTER_SERVICE_IP} "kubernetes.default.svc.cluster.local." +short A | head -n 1)" == "${MASTER_SERVICE_IP}" ]
+[ "$(dig +notcp @${MASTER_SERVICE_IP} "kubernetes.default.svc.cluster.local." +short A | head -n 1)" == "${MASTER_SERVICE_IP}" ]
 
 # add e2e-user as a viewer for the default namespace so we can see infrastructure pieces appear
 openshift admin policy add-role-to-user view e2e-user --namespace=default
@@ -128,6 +137,15 @@ oc login -u e2e-user
 oc project test
 oc whoami
 
+echo "[INFO] Streaming the logs from a deployment twice..."
+oc create -f test/fixtures/failing-dc.yaml
+tryuntil oc get rc/failing-dc-1
+oc logs -f dc/failing-dc
+wait_for_command "oc get rc/failing-dc-1 --template={{.metadata.annotations}} | grep openshift.io/deployment.phase:Failed" $((20*TIME_SEC))
+oc logs dc/failing-dc | grep 'test pre hook executed'
+oc deploy failing-dc --latest
+oc logs --version=1 dc/failing-dc
+
 echo "[INFO] Applying STI application config"
 oc create -f "${STI_CONFIG_FILE}"
 
@@ -141,13 +159,12 @@ os::build:wait_for_end "test"
 wait_for_app "test"
 
 # logs can't be tested without a node, so has to be in e2e
-POD_NAME=`oc get pods -o name -n test | head -n 1`
+POD_NAME=$(oc get pods -n test --template='{{(index .items 0).metadata.name}}')
+oc logs pod/${POD_NAME} --loglevel=6
 oc logs ${POD_NAME} --loglevel=6
-POD_NAME_NO_KIND=`oc get pods -o name -n test | head -n 1 | cut -d '/' -f 2`
-oc logs ${POD_NAME_NO_KIND} --loglevel=6
-BUILD_NAME=`oc get builds -o name -n test | head -n 1`
-oc logs ${BUILD_NAME} --loglevel=6
-oc logs ${BUILD_NAME} --loglevel=6
+BUILD_NAME=$(oc get builds -n test --template='{{(index .items 0).metadata.name}}')
+oc logs build/${BUILD_NAME} --loglevel=6
+oc logs build/${BUILD_NAME} --loglevel=6
 oc logs bc/ruby-sample-build --loglevel=6
 oc logs buildconfigs/ruby-sample-build --loglevel=6
 oc logs buildconfig/ruby-sample-build --loglevel=6

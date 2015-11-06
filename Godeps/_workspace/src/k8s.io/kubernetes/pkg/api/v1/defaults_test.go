@@ -433,6 +433,77 @@ func TestSetDefaultObjectFieldSelectorAPIVersion(t *testing.T) {
 	}
 }
 
+func TestSetDefaultRequestsPod(t *testing.T) {
+	// verify we default if limits are specified
+	s := versioned.PodSpec{}
+	s.Containers = []versioned.Container{
+		{
+			Resources: versioned.ResourceRequirements{
+				Limits: versioned.ResourceList{
+					versioned.ResourceCPU: resource.MustParse("100m"),
+				},
+			},
+		},
+	}
+	pod := &versioned.Pod{
+		Spec: s,
+	}
+	output := roundTrip(t, runtime.Object(pod))
+	pod2 := output.(*versioned.Pod)
+	defaultRequest := pod2.Spec.Containers[0].Resources.Requests
+	requestValue := defaultRequest[versioned.ResourceCPU]
+	if requestValue.String() != "100m" {
+		t.Errorf("Expected request cpu: %s, got: %s", "100m", requestValue.String())
+	}
+
+	// verify we do nothing if no limits are specified
+	s = versioned.PodSpec{}
+	s.Containers = []versioned.Container{{}}
+	pod = &versioned.Pod{
+		Spec: s,
+	}
+	output = roundTrip(t, runtime.Object(pod))
+	pod2 = output.(*versioned.Pod)
+	defaultRequest = pod2.Spec.Containers[0].Resources.Requests
+	requestValue = defaultRequest[versioned.ResourceCPU]
+	if requestValue.String() != "0" {
+		t.Errorf("Expected 0 request value, got: %s", requestValue.String())
+	}
+}
+
+func TestDefaultRequestIsNotSetForReplicationController(t *testing.T) {
+	s := versioned.PodSpec{}
+	s.Containers = []versioned.Container{
+		{
+			Resources: versioned.ResourceRequirements{
+				Limits: versioned.ResourceList{
+					versioned.ResourceCPU: resource.MustParse("100m"),
+				},
+			},
+		},
+	}
+	rc := &versioned.ReplicationController{
+		Spec: versioned.ReplicationControllerSpec{
+			Replicas: newInt(3),
+			Template: &versioned.PodTemplateSpec{
+				ObjectMeta: versioned.ObjectMeta{
+					Labels: map[string]string{
+						"foo": "bar",
+					},
+				},
+				Spec: s,
+			},
+		},
+	}
+	output := roundTrip(t, runtime.Object(rc))
+	rc2 := output.(*versioned.ReplicationController)
+	defaultRequest := rc2.Spec.Template.Spec.Containers[0].Resources.Requests
+	requestValue := defaultRequest[versioned.ResourceCPU]
+	if requestValue.String() != "0" {
+		t.Errorf("Expected 0 request value, got: %s", requestValue.String())
+	}
+}
+
 func TestSetDefaultLimitRangeItem(t *testing.T) {
 	limitRange := &versioned.LimitRange{
 		ObjectMeta: versioned.ObjectMeta{
@@ -472,5 +543,85 @@ func TestSetDefaultLimitRangeItem(t *testing.T) {
 	requestMinValue := defaultRequest[versioned.ResourceMemory]
 	if requestMinValue.String() != "100Mi" {
 		t.Errorf("Expected request memory: %s, got: %s", "100Mi", requestMinValue.String())
+	}
+}
+
+func TestDefaultSecurityContextConstraints(t *testing.T) {
+	tests := map[string]struct {
+		scc              *versioned.SecurityContextConstraints
+		expectedFSGroup  versioned.FSGroupStrategyType
+		expectedSupGroup versioned.SupplementalGroupsStrategyType
+	}{
+		"shouldn't default": {
+			scc: &versioned.SecurityContextConstraints{
+				FSGroup: versioned.FSGroupStrategyOptions{
+					Type: versioned.FSGroupStrategyMustRunAs,
+				},
+				SupplementalGroups: versioned.SupplementalGroupsStrategyOptions{
+					Type: versioned.SupplementalGroupsStrategyMustRunAs,
+				},
+			},
+			expectedFSGroup:  versioned.FSGroupStrategyMustRunAs,
+			expectedSupGroup: versioned.SupplementalGroupsStrategyMustRunAs,
+		},
+		"default fsgroup runAsAny": {
+			scc: &versioned.SecurityContextConstraints{
+				RunAsUser: versioned.RunAsUserStrategyOptions{
+					Type: versioned.RunAsUserStrategyRunAsAny,
+				},
+				SupplementalGroups: versioned.SupplementalGroupsStrategyOptions{
+					Type: versioned.SupplementalGroupsStrategyMustRunAs,
+				},
+			},
+			expectedFSGroup:  versioned.FSGroupStrategyRunAsAny,
+			expectedSupGroup: versioned.SupplementalGroupsStrategyMustRunAs,
+		},
+		"default sup group runAsAny": {
+			scc: &versioned.SecurityContextConstraints{
+				RunAsUser: versioned.RunAsUserStrategyOptions{
+					Type: versioned.RunAsUserStrategyRunAsAny,
+				},
+				FSGroup: versioned.FSGroupStrategyOptions{
+					Type: versioned.FSGroupStrategyMustRunAs,
+				},
+			},
+			expectedFSGroup:  versioned.FSGroupStrategyMustRunAs,
+			expectedSupGroup: versioned.SupplementalGroupsStrategyRunAsAny,
+		},
+		"default fsgroup mustRunAs": {
+			scc: &versioned.SecurityContextConstraints{
+				RunAsUser: versioned.RunAsUserStrategyOptions{
+					Type: versioned.RunAsUserStrategyMustRunAsRange,
+				},
+				SupplementalGroups: versioned.SupplementalGroupsStrategyOptions{
+					Type: versioned.SupplementalGroupsStrategyMustRunAs,
+				},
+			},
+			expectedFSGroup:  versioned.FSGroupStrategyMustRunAs,
+			expectedSupGroup: versioned.SupplementalGroupsStrategyMustRunAs,
+		},
+		"default sup group mustRunAs": {
+			scc: &versioned.SecurityContextConstraints{
+				RunAsUser: versioned.RunAsUserStrategyOptions{
+					Type: versioned.RunAsUserStrategyMustRunAsRange,
+				},
+				FSGroup: versioned.FSGroupStrategyOptions{
+					Type: versioned.FSGroupStrategyMustRunAs,
+				},
+			},
+			expectedFSGroup:  versioned.FSGroupStrategyMustRunAs,
+			expectedSupGroup: versioned.SupplementalGroupsStrategyMustRunAs,
+		},
+	}
+	for k, v := range tests {
+		output := roundTrip(t, runtime.Object(v.scc))
+		scc := output.(*versioned.SecurityContextConstraints)
+
+		if scc.FSGroup.Type != v.expectedFSGroup {
+			t.Errorf("%s has invalid fsgroup.  Expected: %v got: %v", k, v.expectedFSGroup, scc.FSGroup.Type)
+		}
+		if scc.SupplementalGroups.Type != v.expectedSupGroup {
+			t.Errorf("%s has invalid supplemental group.  Expected: %v got: %v", k, v.expectedSupGroup, scc.SupplementalGroups.Type)
+		}
 	}
 }

@@ -1,9 +1,13 @@
 package support
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +34,7 @@ func TestHookExecutor_executeExecNewCreatePodFailure(t *testing.T) {
 	deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), kapi.Codec)
 
 	executor := &HookExecutor{
-		PodClient: &HookExecutorPodClientImpl{
+		podClient: &HookExecutorPodClientImpl{
 			CreatePodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
 				return nil, fmt.Errorf("couldn't create pod")
 			},
@@ -60,9 +64,10 @@ func TestHookExecutor_executeExecNewPodSucceeded(t *testing.T) {
 	deployment, _ := deployutil.MakeDeployment(config, kapi.Codec)
 	deployment.Spec.Template.Spec.NodeSelector = map[string]string{"labelKey1": "labelValue1", "labelKey2": "labelValue2"}
 
+	podLogs := &bytes.Buffer{}
 	var createdPod *kapi.Pod
 	executor := &HookExecutor{
-		PodClient: &HookExecutorPodClientImpl{
+		podClient: &HookExecutorPodClientImpl{
 			CreatePodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
 				createdPod = pod
 				return createdPod, nil
@@ -72,12 +77,20 @@ func TestHookExecutor_executeExecNewPodSucceeded(t *testing.T) {
 				return func() *kapi.Pod { return createdPod }
 			},
 		},
+		podLogDestination: podLogs,
+		podLogStream: func(namespace, name string, opts *kapi.PodLogOptions) (io.ReadCloser, error) {
+			return ioutil.NopCloser(strings.NewReader("test")), nil
+		},
 	}
 
 	err := executor.executeExecNewPod(hook, deployment, "hook")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if e, a := "test", podLogs.String(); e != a {
+		t.Fatalf("expected pod logs to be %q, got %q", e, a)
 	}
 
 	if e, a := deployment.Spec.Template.Spec.NodeSelector, createdPod.Spec.NodeSelector; !reflect.DeepEqual(e, a) {
@@ -105,7 +118,7 @@ func TestHookExecutor_executeExecNewPodFailed(t *testing.T) {
 
 	var createdPod *kapi.Pod
 	executor := &HookExecutor{
-		PodClient: &HookExecutorPodClientImpl{
+		podClient: &HookExecutorPodClientImpl{
 			CreatePodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
 				createdPod = pod
 				return createdPod, nil
@@ -114,6 +127,10 @@ func TestHookExecutor_executeExecNewPodFailed(t *testing.T) {
 				createdPod.Status.Phase = kapi.PodFailed
 				return func() *kapi.Pod { return createdPod }
 			},
+		},
+		podLogDestination: ioutil.Discard,
+		podLogStream: func(namespace, name string, opts *kapi.PodLogOptions) (io.ReadCloser, error) {
+			return nil, fmt.Errorf("can't access logs")
 		},
 	}
 
@@ -220,6 +237,18 @@ func TestHookExecutor_makeHookPod(t *testing.T) {
 									kapi.ResourceMemory: resource.MustParse("10M"),
 								},
 							},
+							VolumeMounts: []kapi.VolumeMount{
+								{
+									Name:      "volume-2",
+									ReadOnly:  true,
+									MountPath: "/mnt/volume-2",
+								},
+							},
+						},
+					},
+					ImagePullSecrets: []kapi.LocalObjectReference{
+						{
+							Name: "secret-1",
 						},
 					},
 				},
@@ -270,6 +299,11 @@ func TestHookExecutor_makeHookPod(t *testing.T) {
 									kapi.ResourceMemory: resource.MustParse("10M"),
 								},
 							},
+						},
+					},
+					ImagePullSecrets: []kapi.LocalObjectReference{
+						{
+							Name: "secret-1",
 						},
 					},
 				},
@@ -461,6 +495,13 @@ func deployment(name, namespace string) *kapi.ReplicationController {
 										kapi.ResourceMemory: resource.MustParse("10M"),
 									},
 								},
+								VolumeMounts: []kapi.VolumeMount{
+									{
+										Name:      "volume-2",
+										ReadOnly:  true,
+										MountPath: "/mnt/volume-2",
+									},
+								},
 							},
 							{
 								Name:            "container2",
@@ -478,6 +519,11 @@ func deployment(name, namespace string) *kapi.ReplicationController {
 						},
 						RestartPolicy: kapi.RestartPolicyAlways,
 						DNSPolicy:     kapi.DNSClusterFirst,
+						ImagePullSecrets: []kapi.LocalObjectReference{
+							{
+								Name: "secret-1",
+							},
+						},
 					},
 					ObjectMeta: kapi.ObjectMeta{
 						Labels: map[string]string{"a": "b"},

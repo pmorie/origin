@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
+
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/credentialprovider"
-	"k8s.io/kubernetes/pkg/util"
+	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildutil "github.com/openshift/origin/pkg/build/util"
@@ -178,7 +180,7 @@ func (g *BuildGenerator) Instantiate(ctx kapi.Context, request *buildapi.BuildRe
 		return nil, err
 	}
 
-	newBuild, err := g.generateBuildFromConfig(ctx, bc, request.Revision)
+	newBuild, err := g.generateBuildFromConfig(ctx, bc, request.Revision, request.Binary)
 	if err != nil {
 		return nil, err
 	}
@@ -298,9 +300,10 @@ func (g *BuildGenerator) createBuild(ctx kapi.Context, build *buildapi.Build) (*
 
 // generateBuildFromConfig generates a build definition based on the current imageid
 // from any ImageStream that is associated to the BuildConfig by From reference in
-// the Strategy, or uses the Image field of the Strategy.
+// the Strategy, or uses the Image field of the Strategy. If binary is provided, override
+// the current build strategy with a binary artifact for this specific build.
 // Takes a BuildConfig to base the build on, and an optional SourceRevision to build.
-func (g *BuildGenerator) generateBuildFromConfig(ctx kapi.Context, bc *buildapi.BuildConfig, revision *buildapi.SourceRevision) (*buildapi.Build, error) {
+func (g *BuildGenerator) generateBuildFromConfig(ctx kapi.Context, bc *buildapi.BuildConfig, revision *buildapi.SourceRevision, binary *buildapi.BinaryBuildSource) (*buildapi.Build, error) {
 	serviceAccount := bc.Spec.ServiceAccount
 	if len(serviceAccount) == 0 {
 		serviceAccount = g.DefaultServiceAccountName
@@ -335,6 +338,15 @@ func (g *BuildGenerator) generateBuildFromConfig(ctx kapi.Context, bc *buildapi.
 		},
 	}
 
+	if binary != nil {
+		build.Spec.Source.Git = nil
+		build.Spec.Source.Binary = binary
+		build.Spec.Source.Type = buildapi.BuildSourceBinary
+		if build.Spec.Source.Dockerfile != nil && binary.AsFile == "Dockerfile" {
+			build.Spec.Source.Dockerfile = nil
+		}
+	}
+
 	build.Name = getNextBuildName(bc)
 	if build.Annotations == nil {
 		build.Annotations = make(map[string]string)
@@ -343,6 +355,7 @@ func (g *BuildGenerator) generateBuildFromConfig(ctx kapi.Context, bc *buildapi.
 	if build.Labels == nil {
 		build.Labels = make(map[string]string)
 	}
+	build.Labels[buildapi.DeprecatedBuildConfigLabel] = bcCopy.Name
 	build.Labels[buildapi.BuildConfigLabel] = bcCopy.Name
 
 	builderSecrets, err := g.FetchServiceAccountSecrets(bc.Namespace, serviceAccount)
@@ -599,11 +612,11 @@ func getNextBuildNameFromBuild(build *buildapi.Build, buildConfig *buildapi.Buil
 		nameElems := strings.Split(buildName, "-")
 		buildName = strings.Join(nameElems[:len(nameElems)-1], "-")
 	}
-	suffix := fmt.Sprintf("%v", util.Now().UnixNano())
+	suffix := fmt.Sprintf("%v", unversioned.Now().UnixNano())
 	if len(suffix) > 10 {
 		suffix = suffix[len(suffix)-10:]
 	}
-	return namer.GetName(buildName, suffix, util.DNS1123SubdomainMaxLength)
+	return namer.GetName(buildName, suffix, kvalidation.DNS1123SubdomainMaxLength)
 
 }
 

@@ -22,8 +22,7 @@ const emptyString = "<none>"
 
 func tabbedString(f func(*tabwriter.Writer) error) (string, error) {
 	out := new(tabwriter.Writer)
-	b := make([]byte, 1024)
-	buf := bytes.NewBuffer(b)
+	buf := &bytes.Buffer{}
 	out.Init(buf, 0, 8, 1, '\t', 0)
 
 	err := f(out)
@@ -114,6 +113,11 @@ func formatRelativeTime(t time.Time) string {
 	return units.HumanDuration(timeNowFn().Sub(t))
 }
 
+// FormatRelativeTime converts a time field into a human readable age string (hours, minutes, days).
+func FormatRelativeTime(t time.Time) string {
+	return formatRelativeTime(t)
+}
+
 func formatMeta(out *tabwriter.Writer, m api.ObjectMeta) {
 	formatString(out, "Name", m.Name)
 	if !m.CreationTimestamp.IsZero() {
@@ -150,7 +154,7 @@ func webhookURL(c *buildapi.BuildConfig, cli client.BuildConfigsNamespacer) map[
 }
 
 func formatImageStreamTags(out *tabwriter.Writer, stream *imageapi.ImageStream) {
-	if len(stream.Status.Tags) == 0 {
+	if len(stream.Status.Tags) == 0 && len(stream.Spec.Tags) == 0 {
 		fmt.Fprintf(out, "Tags:\t<none>\n")
 		return
 	}

@@ -27,6 +27,7 @@ import (
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
+// DeployOptions holds all the options for the `deploy` command
 type DeployOptions struct {
 	out             io.Writer
 	osClient        client.Interface
@@ -119,7 +120,7 @@ func NewCmdDeploy(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.C
 
 func (o *DeployOptions) Complete(f *clientcmd.Factory, args []string, out io.Writer) error {
 	if len(args) > 1 {
-		return errors.New("only one deploymentConfig name is supported as argument.")
+		return errors.New("only one deployment config name is supported as argument.")
 	}
 	var err error
 
@@ -138,11 +139,7 @@ func (o *DeployOptions) Complete(f *clientcmd.Factory, args []string, out io.Wri
 	o.out = out
 
 	if len(args) > 0 {
-		name := args[0]
-		if strings.Index(name, "/") == -1 {
-			name = fmt.Sprintf("dc/%s", name)
-		}
-		o.deploymentConfigName = name
+		o.deploymentConfigName = args[0]
 	}
 
 	return nil
@@ -150,7 +147,7 @@ func (o *DeployOptions) Complete(f *clientcmd.Factory, args []string, out io.Wri
 
 func (o DeployOptions) Validate() error {
 	if len(o.deploymentConfigName) == 0 {
-		return errors.New("a deploymentConfig name is required.")
+		return errors.New("a deployment config name is required.")
 	}
 	numOptions := 0
 	if o.deployLatest {
@@ -174,7 +171,7 @@ func (o DeployOptions) Validate() error {
 func (o DeployOptions) RunDeploy() error {
 	r := o.builder.
 		NamespaceParam(o.namespace).
-		ResourceTypeOrNameArgs(false, o.deploymentConfigName).
+		ResourceNames("deploymentconfigs", o.deploymentConfigName).
 		SingleResourceType().
 		Do()
 	resultObj, err := r.Object()
@@ -183,7 +180,7 @@ func (o DeployOptions) RunDeploy() error {
 	}
 	config, ok := resultObj.(*deployapi.DeploymentConfig)
 	if !ok {
-		return fmt.Errorf("%s is not a valid deploymentconfig", o.deploymentConfigName)
+		return fmt.Errorf("%s is not a valid deployment config", o.deploymentConfigName)
 	}
 
 	switch {
@@ -243,7 +240,7 @@ func (o DeployOptions) retry(config *deployapi.DeploymentConfig, out io.Writer) 
 	deployment, err := o.kubeClient.ReplicationControllers(config.Namespace).Get(deploymentName)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
-			return fmt.Errorf("Unable to find the latest deployment (#%d).\nYou can start a new deployment using the --latest option.", config.LatestVersion)
+			return fmt.Errorf("unable to find the latest deployment (#%d).\nYou can start a new deployment using the --latest option.", config.LatestVersion)
 		}
 		return err
 	}
@@ -284,7 +281,7 @@ func (o DeployOptions) retry(config *deployapi.DeploymentConfig, out io.Writer) 
 
 // cancel cancels any deployment process in progress for config.
 func (o DeployOptions) cancel(config *deployapi.DeploymentConfig, out io.Writer) error {
-	deployments, err := o.kubeClient.ReplicationControllers(config.Namespace).List(deployutil.ConfigSelector(config.Name))
+	deployments, err := o.kubeClient.ReplicationControllers(config.Namespace).List(deployutil.ConfigSelector(config.Name), fields.Everything())
 	if err != nil {
 		return err
 	}

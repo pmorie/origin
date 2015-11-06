@@ -14,13 +14,7 @@ source "${OS_ROOT}/hack/common.sh"
 os::log::install_errexit
 cd "${OS_ROOT}"
 
-ensure_ginkgo_or_die
-ensure_iptables_or_die
-
 os::build::setup_env
-if [[ -z ${TEST_ONLY+x} ]]; then
-	go test -c ./test/extended -o ${OS_OUTPUT_BINPATH}/extended.test
-fi
 
 export TMPDIR="${TMPDIR:-"/tmp"}"
 export BASETMPDIR="${TMPDIR}/openshift-extended-tests/authentication"
@@ -43,6 +37,7 @@ trap "cleanup" EXIT
 
 echo "[INFO] Starting server"
 
+ensure_iptables_or_die
 setup_env_vars
 reset_tmp_dir
 configure_os_server
@@ -59,12 +54,12 @@ oc new-project openldap
 # create all the resources we need
 oc create -f test/extended/fixtures/ldap
 
-is_event_template=(                      \
-"{{with \$tags := .status.tags}}"        \
-	"{{with \$event := index \$tags 0}}" \
-		"{{\$event.tag}}"                \
-	"{{end}}"                            \
-"{{end}}"                                \
+is_event_template=(               \
+"{{with \$tags := .status.tags}}" \
+    "{{range \$tag := \$tags}}"   \
+        "{{\$tag.tag}} "          \
+    "{{end}}"                     \
+"{{end}}"                         \
 )
 is_event_template=$(IFS=""; echo "${is_event_template[*]}") # re-formats template for use
 
@@ -74,24 +69,24 @@ wait_for_command 'oc get imagestream openldap --template="${is_event_template}" 
 # kick off a build and wait for it to finish
 oc start-build openldap --follow
 
-server_ready_template=(                                       \
-"{{with \$items := .items}}"                                  \
-	"{{with \$item := index \$items 0}}"                      \
-		"{{with \$map := index \$item.status.conditions 0}}"  \
-			"{{with \$state := index \$map \"type\"}}"        \
-				"{{\$state}}"                                 \
-			"{{end}}"                                         \
-			"{{with \$valid := index \$map \"status\"}}"      \
-				"{{\$valid}}"                                 \
-			"{{end}}"                                         \
-		"{{end}}"                                             \
-	"{{end}}"                                                 \
-"{{end}}"                                                     \
+server_ready_template=(                                  \
+"{{with \$items := .items}}"                             \
+    "{{with \$item := index \$items 0}}"                 \
+        "{{range \$map := \$item.status.conditions}}"    \
+            "{{with \$state := index \$map \"type\"}}"   \
+                "{{\$state}}"                            \
+            "{{end}}"                                    \
+            "{{with \$valid := index \$map \"status\"}}" \
+                "{{\$valid}} "                           \
+            "{{end}}"                                    \
+        "{{end}}"                                        \
+    "{{end}}"                                            \
+"{{end}}"                                                \
 )
 server_ready_template=$(IFS=$""; echo "${server_ready_template[*]}") # re-formats template for use
 
 # wait for LDAP server to be ready
-wait_for_command 'oc get pods -l deploymentconfig=openldap-server --template="${server_ready_template}" | grep ReadyTrue' $((60*TIME_SEC)) 
+wait_for_command 'oc get pods -l deploymentconfig=openldap-server --template="${server_ready_template}" | grep "ReadyTrue "' $((60*TIME_SEC)) 
 
 # TODO(skuznets): readiness check is premature
 sleep 10
@@ -105,7 +100,7 @@ function compare_and_cleanup() {
 	validation_file=$1
 	actual_file=actual-${validation_file}.yaml
 	rm -f ${WORKINGDIR}/${actual_file} 
-	oc get groups --no-headers -o name | sort | xargs -I{} oc export {} -o yaml >> ${WORKINGDIR}/${actual_file}
+	oc get groups --no-headers | awk '{print $1}' | sort | xargs -I{} oc export group {} -o yaml >> ${WORKINGDIR}/${actual_file}
 	os::util::sed '/sync-time/d' ${WORKINGDIR}/${actual_file}
 	diff ${validation_file} ${WORKINGDIR}/${actual_file}
 	oc delete groups --all
@@ -150,8 +145,7 @@ for (( i=0; i<${#schema[@]}; i++ )); do
 	done
 
 	echo -e "\tTEST: Sync all LDAP groups from LDAP server"
-	# current schema fails for group3 for rfc2307, TODO(skuznets): fix
-	openshift ex sync-groups --sync-config=sync-config.yaml --confirm || true 
+	openshift ex sync-groups --sync-config=sync-config.yaml --confirm
 	compare_and_cleanup valid_all_ldap_sync.txt
 
 
@@ -186,7 +180,7 @@ for (( i=0; i<${#schema[@]}; i++ )); do
 	openshift ex sync-groups ${group1_ldapuid} ${group2_ldapuid} --sync-config=sync-config.yaml --confirm
 	oc patch group ${group1_osuid} -p 'users: []'
 	oc patch group ${group2_osuid} -p 'users: []'
-	openshift ex sync-groups --type=openshift ${group2_osuid} --whitelist=whitelist_openshift.txt --sync-config=sync-config.yaml --confirm
+	openshift ex sync-groups --type=openshift group/${group2_osuid} --whitelist=whitelist_openshift.txt --sync-config=sync-config.yaml --confirm
 	compare_and_cleanup valid_whitelist_union_sync.txt
 	
 
@@ -202,10 +196,8 @@ for (( i=0; i<${#schema[@]}; i++ )); do
 	compare_and_cleanup valid_all_blacklist_sync.txt
 
 	echo -e "\tTEST: Sync subset of OpenShift groups from LDAP server using whitelist and blacklist file"
-	openshift ex sync-groups --sync-config=sync-config.yaml --confirm || true
-	oc patch group ${group1_osuid} -p 'users: []'
-	oc patch group ${group2_osuid} -p 'users: []'
-	oc patch group ${group3_osuid} -p 'users: []' || true
+	openshift ex sync-groups --sync-config=sync-config.yaml --confirm
+	oc get group -o name --no-headers | xargs -n 1 oc patch -p 'users: []'
 	# openshift ex sync-groups --type=openshift --whitelist=osgroupuids.txt --blacklist=blacklist_openshift.txt --blacklist-group=${group1_osuid} --sync-config=sync-config.yaml --confirm
 	openshift ex sync-groups --type=openshift --whitelist=osgroupuids.txt --blacklist=blacklist_openshift.txt --sync-config=sync-config.yaml --confirm
 	compare_and_cleanup valid_all_openshift_blacklist_sync.txt
@@ -213,15 +205,15 @@ for (( i=0; i<${#schema[@]}; i++ )); do
 
 	# MAPPINGS
 	echo -e "\tTEST: Sync all LDAP groups from LDAP server using a user-defined mapping"
-	openshift ex sync-groups --sync-config=sync-config-user-defined.yaml --confirm || true
+	openshift ex sync-groups --sync-config=sync-config-user-defined.yaml --confirm
 	compare_and_cleanup valid_all_ldap_sync_user_defined.txt
 
 	echo -e "\tTEST: Sync all LDAP groups from LDAP server using a partially user-defined mapping"
-	openshift ex sync-groups --sync-config=sync-config-partially-user-defined.yaml --confirm || true
+	openshift ex sync-groups --sync-config=sync-config-partially-user-defined.yaml --confirm
 	compare_and_cleanup valid_all_ldap_sync_partially_user_defined.txt
 
 	echo -e "\tTEST: Sync based on OpenShift groups respecting OpenShift mappings"
-	openshift ex sync-groups --sync-config=sync-config-user-defined.yaml --confirm || true
+	openshift ex sync-groups --sync-config=sync-config-user-defined.yaml --confirm
 	oc get group -o name --no-headers | xargs -n 1 oc patch -p 'users: []'
 	openshift ex sync-groups --type=openshift --sync-config=sync-config.yaml --confirm
 	compare_and_cleanup valid_all_ldap_sync_user_defined.txt
@@ -229,7 +221,7 @@ for (( i=0; i<${#schema[@]}; i++ )); do
 
 
 	echo -e "\tTEST: Sync all LDAP groups from LDAP server using DN as attribute whenever possible"
-    openshift ex sync-groups --sync-config=sync-config-dn-everywhere.yaml --confirm || true
+    openshift ex sync-groups --sync-config=sync-config-dn-everywhere.yaml --confirm
 	compare_and_cleanup valid_all_ldap_sync_dn_everywhere.txt
 
     popd > /dev/null

@@ -23,7 +23,9 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/apis/experimental"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/record"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller/podautoscaler/metrics"
 	"k8s.io/kubernetes/pkg/fields"
@@ -32,26 +34,32 @@ import (
 )
 
 const (
-	heapsterNamespace = "kube-system"
-	heapsterService   = "monitoring-heapster"
-
 	// Usage shoud exceed the tolerance before we start downscale or upscale the pods.
 	// TODO: make it a flag or HPA spec element.
 	tolerance = 0.1
 )
 
 type HorizontalController struct {
-	client        client.Interface
+	scaleNamespacer client.ScaleNamespacer
+	hpaNamespacer   client.HorizontalPodAutoscalersNamespacer
+
 	metricsClient metrics.MetricsClient
+	eventRecorder record.EventRecorder
 }
 
-var downscaleForbiddenWindow, _ = time.ParseDuration("20m")
-var upscaleForbiddenWindow, _ = time.ParseDuration("3m")
+var downscaleForbiddenWindow = 5 * time.Minute
+var upscaleForbiddenWindow = 3 * time.Minute
 
-func NewHorizontalController(client client.Interface, metricsClient metrics.MetricsClient) *HorizontalController {
+func NewHorizontalController(evtNamespacer client.EventNamespacer, scaleNamespacer client.ScaleNamespacer, hpaNamespacer client.HorizontalPodAutoscalersNamespacer, metricsClient metrics.MetricsClient) *HorizontalController {
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(evtNamespacer.Events(""))
+	recorder := broadcaster.NewRecorder(api.EventSource{Component: "horizontal-pod-autoscaler"})
+
 	return &HorizontalController{
-		client:        client,
-		metricsClient: metricsClient,
+		scaleNamespacer: scaleNamespacer,
+		hpaNamespacer:   hpaNamespacer,
+		metricsClient:   metricsClient,
+		eventRecorder:   recorder,
 	}
 }
 
@@ -63,92 +71,123 @@ func (a *HorizontalController) Run(syncPeriod time.Duration) {
 	}, syncPeriod, util.NeverStop)
 }
 
+func (a *HorizontalController) computeReplicasForCPUUtilization(hpa extensions.HorizontalPodAutoscaler,
+	scale *extensions.Scale) (int, *int, error) {
+	if hpa.Spec.CPUUtilization == nil {
+		// If CPUTarget is not specified than we should return some default values.
+		// Since we always take maximum number of replicas from all policies it is safe
+		// to just return 0.
+		return 0, nil, nil
+	}
+	currentReplicas := scale.Status.Replicas
+	currentUtilization, err := a.metricsClient.GetCPUUtilization(hpa.Namespace, scale.Status.Selector)
+
+	// TODO: what to do on partial errors (like metrics obtained for 75% of pods).
+	if err != nil {
+		a.eventRecorder.Event(&hpa, "FailedGetMetrics", err.Error())
+		return 0, nil, fmt.Errorf("failed to get cpu utilization: %v", err)
+	}
+
+	usageRatio := float64(*currentUtilization) / float64(hpa.Spec.CPUUtilization.TargetPercentage)
+	if math.Abs(1.0-usageRatio) > tolerance {
+		return int(math.Ceil(usageRatio * float64(currentReplicas))), currentUtilization, nil
+	} else {
+		return currentReplicas, currentUtilization, nil
+	}
+}
+
+func (a *HorizontalController) reconcileAutoscaler(hpa extensions.HorizontalPodAutoscaler) error {
+	reference := fmt.Sprintf("%s/%s/%s", hpa.Spec.ScaleRef.Kind, hpa.Namespace, hpa.Spec.ScaleRef.Name)
+
+	scale, err := a.scaleNamespacer.Scales(hpa.Namespace).Get(hpa.Spec.ScaleRef.Kind, hpa.Spec.ScaleRef.Name)
+	if err != nil {
+		a.eventRecorder.Event(&hpa, "FailedGetScale", err.Error())
+		return fmt.Errorf("failed to query scale subresource for %s: %v", reference, err)
+	}
+	currentReplicas := scale.Status.Replicas
+
+	desiredReplicas, currentUtilization, err := a.computeReplicasForCPUUtilization(hpa, scale)
+	if err != nil {
+		a.eventRecorder.Event(&hpa, "FailedComputeReplicas", err.Error())
+		return fmt.Errorf("failed to compute desired number of replicas based on CPU utilization for %s: %v", reference, err)
+	}
+
+	if hpa.Spec.MinReplicas != nil && desiredReplicas < *hpa.Spec.MinReplicas {
+		desiredReplicas = *hpa.Spec.MinReplicas
+	}
+
+	// TODO: remove when pod idling is done.
+	if desiredReplicas == 0 {
+		desiredReplicas = 1
+	}
+
+	if desiredReplicas > hpa.Spec.MaxReplicas {
+		desiredReplicas = hpa.Spec.MaxReplicas
+	}
+	now := time.Now()
+	rescale := false
+
+	if desiredReplicas != currentReplicas {
+		// Going down only if the usageRatio dropped significantly below the target
+		// and there was no rescaling in the last downscaleForbiddenWindow.
+		if desiredReplicas < currentReplicas &&
+			(hpa.Status.LastScaleTime == nil ||
+				hpa.Status.LastScaleTime.Add(downscaleForbiddenWindow).Before(now)) {
+			rescale = true
+		}
+
+		// Going up only if the usage ratio increased significantly above the target
+		// and there was no rescaling in the last upscaleForbiddenWindow.
+		if desiredReplicas > currentReplicas &&
+			(hpa.Status.LastScaleTime == nil ||
+				hpa.Status.LastScaleTime.Add(upscaleForbiddenWindow).Before(now)) {
+			rescale = true
+		}
+	}
+
+	if rescale {
+		scale.Spec.Replicas = desiredReplicas
+		_, err = a.scaleNamespacer.Scales(hpa.Namespace).Update(hpa.Spec.ScaleRef.Kind, scale)
+		if err != nil {
+			a.eventRecorder.Eventf(&hpa, "FailedRescale", "New size: %d; error: %v", desiredReplicas, err.Error())
+			return fmt.Errorf("failed to rescale %s: %v", reference, err)
+		}
+		a.eventRecorder.Eventf(&hpa, "SuccessfulRescale", "New size: %d", desiredReplicas)
+		glog.Infof("Successfull rescale of %s, old size: %d, new size: %d",
+			hpa.Name, currentReplicas, desiredReplicas)
+	} else {
+		desiredReplicas = currentReplicas
+	}
+
+	hpa.Status = extensions.HorizontalPodAutoscalerStatus{
+		CurrentReplicas:                 currentReplicas,
+		DesiredReplicas:                 desiredReplicas,
+		CurrentCPUUtilizationPercentage: currentUtilization,
+		LastScaleTime:                   hpa.Status.LastScaleTime,
+	}
+	if rescale {
+		now := unversioned.NewTime(now)
+		hpa.Status.LastScaleTime = &now
+	}
+
+	_, err = a.hpaNamespacer.HorizontalPodAutoscalers(hpa.Namespace).UpdateStatus(&hpa)
+	if err != nil {
+		a.eventRecorder.Event(&hpa, "FailedUpdateStatus", err.Error())
+		return fmt.Errorf("failed to update status for %s: %v", hpa.Name, err)
+	}
+	return nil
+}
+
 func (a *HorizontalController) reconcileAutoscalers() error {
 	ns := api.NamespaceAll
-	list, err := a.client.Experimental().HorizontalPodAutoscalers(ns).List(labels.Everything(), fields.Everything())
+	list, err := a.hpaNamespacer.HorizontalPodAutoscalers(ns).List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return fmt.Errorf("error listing nodes: %v", err)
 	}
 	for _, hpa := range list.Items {
-		reference := fmt.Sprintf("%s/%s/%s", hpa.Spec.ScaleRef.Kind, hpa.Spec.ScaleRef.Namespace, hpa.Spec.ScaleRef.Name)
-
-		scale, err := a.client.Experimental().Scales(hpa.Spec.ScaleRef.Namespace).Get(hpa.Spec.ScaleRef.Kind, hpa.Spec.ScaleRef.Name)
+		err := a.reconcileAutoscaler(hpa)
 		if err != nil {
-			glog.Warningf("Failed to query scale subresource for %s: %v", reference, err)
-			continue
-		}
-		currentReplicas := scale.Status.Replicas
-		currentConsumption, err := a.metricsClient.ResourceConsumption(hpa.Spec.ScaleRef.Namespace).Get(hpa.Spec.Target.Resource,
-			scale.Status.Selector)
-
-		// TODO: what to do on partial errors (like metrics obtained for 75% of pods).
-		if err != nil {
-			glog.Warningf("Error while getting metrics for %s: %v", reference, err)
-			continue
-		}
-
-		usageRatio := float64(currentConsumption.Quantity.MilliValue()) / float64(hpa.Spec.Target.Quantity.MilliValue())
-		desiredReplicas := int(math.Ceil(usageRatio * float64(currentReplicas)))
-
-		if desiredReplicas < hpa.Spec.MinCount {
-			desiredReplicas = hpa.Spec.MinCount
-		}
-
-		// TODO: remove when pod ideling is done.
-		if desiredReplicas == 0 {
-			desiredReplicas = 1
-		}
-
-		if desiredReplicas > hpa.Spec.MaxCount {
-			desiredReplicas = hpa.Spec.MaxCount
-		}
-		now := time.Now()
-		rescale := false
-
-		if desiredReplicas != currentReplicas {
-			// Going down only if the usageRatio dropped significantly below the target
-			// and there was no rescaling in the last downscaleForbiddenWindow.
-			if desiredReplicas < currentReplicas && usageRatio < (1-tolerance) &&
-				(hpa.Status == nil || hpa.Status.LastScaleTimestamp == nil ||
-					hpa.Status.LastScaleTimestamp.Add(downscaleForbiddenWindow).Before(now)) {
-				rescale = true
-			}
-
-			// Going up only if the usage ratio increased significantly above the target
-			// and there was no rescaling in the last upscaleForbiddenWindow.
-			if desiredReplicas > currentReplicas && usageRatio > (1+tolerance) &&
-				(hpa.Status == nil || hpa.Status.LastScaleTimestamp == nil ||
-					hpa.Status.LastScaleTimestamp.Add(upscaleForbiddenWindow).Before(now)) {
-				rescale = true
-			}
-		}
-
-		if rescale {
-			scale.Spec.Replicas = desiredReplicas
-			_, err = a.client.Experimental().Scales(hpa.Namespace).Update(hpa.Spec.ScaleRef.Kind, scale)
-			if err != nil {
-				glog.Warningf("Failed to rescale %s: %v", reference, err)
-				continue
-			}
-		} else {
-			desiredReplicas = currentReplicas
-		}
-
-		status := experimental.HorizontalPodAutoscalerStatus{
-			CurrentReplicas:    currentReplicas,
-			DesiredReplicas:    desiredReplicas,
-			CurrentConsumption: currentConsumption,
-		}
-		hpa.Status = &status
-		if rescale {
-			now := util.NewTime(now)
-			hpa.Status.LastScaleTimestamp = &now
-		}
-
-		_, err = a.client.Experimental().HorizontalPodAutoscalers(hpa.Namespace).Update(&hpa)
-		if err != nil {
-			glog.Warningf("Failed to update HorizontalPodAutoscaler %s: %v", hpa.Name, err)
-			continue
+			glog.Warningf("Failed to reconcile %s: %v", hpa.Name, err)
 		}
 	}
 	return nil

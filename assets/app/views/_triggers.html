@@ -36,7 +36,15 @@
           </span>
         </span>
       </span>
+      <a
+        ng-if="!!['New', 'Pending'].indexOf(build.status.phase)"
+        ng-href="project/{{build.metadata.namespace}}/browse/builds/{{build.metadata.labels.buildconfig}}/{{build.metadata.name}}?tab=logs">
+        View Log
+      </a>
       <a ng-hide="build | isIncompleteBuild" style="margin-left: 5px;" href="" ng-click="hideBuild(build)">Dismiss</a>
     </div>
   </div>
 </div>
+
+
+

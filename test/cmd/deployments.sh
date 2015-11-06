@@ -14,6 +14,8 @@ oc get deploymentConfigs
 oc get dc
 oc create -f test/integration/fixtures/test-deployment-config.json
 oc describe deploymentConfigs test-deployment-config
+[ "$(oc get dc -o name | grep 'deploymentconfig/test-deployment-config')" ]
+[ "$(oc describe dc test-deployment-config | grep 'deploymentconfig=test-deployment-config')" ]
 [ "$(oc env dc/test-deployment-config --list | grep TEST=value)" ]
 [ ! "$(oc env dc/test-deployment-config TEST- --list | grep TEST=value)" ]
 [ "$(oc env dc/test-deployment-config TEST=foo --list | grep TEST=foo)" ]
@@ -29,6 +31,7 @@ oc describe deploymentConfigs test-deployment-config
 [ "$(oc env dc/test-deployment-config TEST=bar OTHER=baz BAR-)" ]
 
 oc deploy test-deployment-config
+oc deploy dc/test-deployment-config
 oc delete deploymentConfigs test-deployment-config
 echo "deploymentConfigs: ok"
 
@@ -45,8 +48,10 @@ tryuntil oc get rc/test-deployment-config-1
 
 # scale rc via deployment configuration
 oc scale dc test-deployment-config --replicas=1
+oc scale dc test-deployment-config --replicas=2 --timeout=10m
 # scale directly
-oc scale rc test-deployment-config-1 --replicas=5
+oc scale rc test-deployment-config-1 --replicas=4
+oc scale rc test-deployment-config-1 --replicas=5 --timeout=10m
 oc delete all --all
 echo "scale: ok"
 
@@ -65,6 +70,10 @@ oc rollback rc/database-1 -o=yaml
 echo "rollback: ok"
 
 oc get dc/database
+oc expose dc/database --name=fromdc
+# should be a service
+oc get svc/fromdc
+oc delete svc/fromdc
 oc stop dc/database
 [ ! "$(oc get dc/database)" ]
 [ ! "$(oc get rc/database-1)" ]

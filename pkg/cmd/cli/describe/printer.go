@@ -3,14 +3,15 @@ package describe
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	kctl "k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
@@ -26,14 +27,14 @@ import (
 )
 
 var (
-	buildColumns            = []string{"NAME", "TYPE", "FROM", "STATUS", "STARTED"}
+	buildColumns            = []string{"NAME", "TYPE", "FROM", "STATUS", "STARTED", "DURATION"}
 	buildConfigColumns      = []string{"NAME", "TYPE", "FROM", "LATEST"}
 	imageColumns            = []string{"NAME", "DOCKER REF"}
 	imageStreamTagColumns   = []string{"NAME", "DOCKER REF", "UPDATED", "IMAGENAME"}
 	imageStreamImageColumns = []string{"NAME", "DOCKER REF", "UPDATED", "IMAGENAME"}
 	imageStreamColumns      = []string{"NAME", "DOCKER REPO", "TAGS", "UPDATED"}
 	projectColumns          = []string{"NAME", "DISPLAY NAME", "STATUS"}
-	routeColumns            = []string{"NAME", "HOST/PORT", "PATH", "SERVICE", "LABELS", "TLS TERMINATION"}
+	routeColumns            = []string{"NAME", "HOST/PORT", "PATH", "SERVICE", "LABELS", "INSECURE POLICY", "TLS TERMINATION"}
 	deploymentColumns       = []string{"NAME", "STATUS", "CAUSE"}
 	deploymentConfigColumns = []string{"NAME", "TRIGGERS", "LATEST"}
 	templateColumns         = []string{"NAME", "DESCRIPTION", "PARAMETERS", "OBJECTS"}
@@ -70,6 +71,7 @@ func NewHumanReadablePrinter(noHeaders, withNamespace, wide bool, showAll bool, 
 	p.Handler(buildConfigColumns, printBuildConfigList)
 	p.Handler(imageColumns, printImage)
 	p.Handler(imageStreamTagColumns, printImageStreamTag)
+	p.Handler(imageStreamTagColumns, printImageStreamTagList)
 	p.Handler(imageStreamImageColumns, printImageStreamImage)
 	p.Handler(imageColumns, printImageList)
 	p.Handler(imageStreamColumns, printImageStream)
@@ -207,14 +209,27 @@ func printBuild(build *buildapi.Build, w io.Writer, withNamespace, wide, showAll
 	if build.Status.StartTimestamp != nil {
 		created = fmt.Sprintf("%s ago", formatRelativeTime(build.Status.StartTimestamp.Time))
 	}
+	var duration string
+	if build.Status.Duration > 0 {
+		duration = build.Status.Duration.String()
+	}
 	from := describeSourceShort(build.Spec)
-	_, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", build.Name, describeStrategy(build.Spec.Strategy.Type), from, build.Status.Phase, created)
+	status := string(build.Status.Phase)
+	if len(build.Status.Reason) > 0 {
+		status = fmt.Sprintf("%s (%s)", status, build.Status.Reason)
+	}
+	_, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", build.Name, describeStrategy(build.Spec.Strategy.Type), from, status, created, duration)
 	return err
 }
 
 func describeSourceShort(spec buildapi.BuildSpec) string {
 	var from string
 	switch source := spec.Source; {
+	case source.Binary != nil:
+		from = "Binary"
+		if rev := describeSourceGitRevision(spec); len(rev) != 0 {
+			from = fmt.Sprintf("%s@%s", from, rev)
+		}
 	case source.Dockerfile != nil && source.Git != nil:
 		from = "Dockerfile,Git"
 		if rev := describeSourceGitRevision(spec); len(rev) != 0 {
@@ -233,6 +248,8 @@ func describeSourceShort(spec buildapi.BuildSpec) string {
 	return from
 }
 
+var nonCommitRev = regexp.MustCompile("[^a-fA-F0-9]")
+
 func describeSourceGitRevision(spec buildapi.BuildSpec) string {
 	var rev string
 	if spec.Revision != nil && spec.Revision.Git != nil {
@@ -240,6 +257,10 @@ func describeSourceGitRevision(spec buildapi.BuildSpec) string {
 	}
 	if len(rev) == 0 && spec.Source.Git != nil {
 		rev = spec.Source.Git.Ref
+	}
+	// if this appears to be a full Git commit hash, shorten it to 7 characters for brevity
+	if !nonCommitRev.MatchString(rev) && len(rev) > 20 {
+		rev = rev[:7]
 	}
 	return rev
 }
@@ -297,6 +318,15 @@ func printImageStreamTag(ist *imageapi.ImageStreamTag, w io.Writer, withNamespac
 	return err
 }
 
+func printImageStreamTagList(list *imageapi.ImageStreamTagList, w io.Writer, withNamespace, wide, showAll bool, columnLabels []string) error {
+	for _, ist := range list.Items {
+		if err := printImageStreamTag(&ist, w, withNamespace, wide, showAll, columnLabels); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func printImageStreamImage(isi *imageapi.ImageStreamImage, w io.Writer, withNamespace, wide, showAll bool, columnLabels []string) error {
 	created := fmt.Sprintf("%s ago", formatRelativeTime(isi.CreationTimestamp.Time))
 	if withNamespace {
@@ -321,7 +351,7 @@ func printImageStream(stream *imageapi.ImageStream, w io.Writer, withNamespace, 
 	tags := ""
 	const numOfTagsShown = 3
 
-	var latest util.Time
+	var latest unversioned.Time
 	for _, list := range stream.Status.Tags {
 		if len(list.Items) > 0 {
 			if list.Items[0].Created.After(latest.Time) {
@@ -348,7 +378,11 @@ func printImageStream(stream *imageapi.ImageStream, w io.Writer, withNamespace, 
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", stream.Name, stream.Status.DockerImageRepository, tags, latestTime)
+	repo := stream.Spec.DockerImageRepository
+	if len(repo) == 0 {
+		repo = stream.Status.DockerImageRepository
+	}
+	_, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", stream.Name, repo, tags, latestTime)
 	return err
 }
 
@@ -393,15 +427,18 @@ func printProjectList(projects *projectapi.ProjectList, w io.Writer, withNamespa
 
 func printRoute(route *routeapi.Route, w io.Writer, withNamespace, wide, showAll bool, columnLabels []string) error {
 	tlsTerm := ""
+	insecurePolicy := ""
 	if route.Spec.TLS != nil {
 		tlsTerm = string(route.Spec.TLS.Termination)
+		insecurePolicy = string(route.Spec.TLS.InsecureEdgeTerminationPolicy)
 	}
 	if withNamespace {
 		if _, err := fmt.Fprintf(w, "%s\t", route.Namespace); err != nil {
 			return err
 		}
 	}
-	_, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", route.Name, route.Spec.Host, route.Spec.Path, route.Spec.To.Name, labels.Set(route.Labels), tlsTerm)
+	_, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		route.Name, route.Spec.Host, route.Spec.Path, route.Spec.To.Name, labels.Set(route.Labels), insecurePolicy, tlsTerm)
 	return err
 }
 

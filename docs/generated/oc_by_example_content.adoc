@@ -52,19 +52,6 @@ Attach to a running container.
 ====
 
 
-== oc build-logs
-Show logs from a build
-
-====
-
-[options="nowrap"]
-----
-  # Stream logs from container
-  $ openshift cli build-logs 566bed879d2d
-----
-====
-
-
 == oc cancel-build
 Cancel a pending or running build
 
@@ -153,7 +140,7 @@ Sets a user entry in kubeconfig
 
 
 == oc config view
-displays Merged kubeconfig settings or a specified kubeconfig file.
+Displays merged kubeconfig settings or a specified kubeconfig file.
 
 ====
 
@@ -164,6 +151,27 @@ displays Merged kubeconfig settings or a specified kubeconfig file.
   
   # Get the password for the e2e user
   $ openshift cli config view -o template --template='{{range .users}}{{ if eq .name "e2e" }}{{ index .user.password }}{{end}}{{end}}'
+----
+====
+
+
+== oc convert
+Convert config files between different API versions
+
+====
+
+[options="nowrap"]
+----
+# Convert 'pod.yaml' to latest version and print to stdout.
+$ openshift cli convert -f pod.yaml
+
+# Convert the live state of the resource specified by 'pod.yaml' to the latest version
+# and print to stdout in json format.
+$ openshift cli convert -f pod.yaml --local -o json
+
+# Convert all files under current directory to latest version and create them all.
+$ openshift cli convert -f . | kubectl create -f -
+
 ----
 ====
 
@@ -321,6 +329,22 @@ Execute a command in a container.
 ====
 
 
+== oc explain
+Documentation of resources.
+
+====
+
+[options="nowrap"]
+----
+# Get the documentation of the resource and its fields
+$ openshift cli explain pods
+
+# Get the documentation of a specific field of a resource
+$ openshift cli explain pods.spec.containers
+----
+====
+
+
 == oc export
 Export resources so they can be used elsewhere
 
@@ -465,14 +489,22 @@ Print the logs for a resource.
 
 [options="nowrap"]
 ----
-  # Returns snapshot of ruby-container logs from pod 123456-7890.
-  $ openshift cli logs 123456-7890 -c ruby-container
-
-  # Starts streaming of ruby-container logs from pod 123456-7890.
-  $ openshift cli logs -f 123456-7890 -c ruby-container
-
-  # Starts streaming the logs of the most recent build of the openldap BuildConfig.
+  # Start streaming the logs of the most recent build of the openldap build config.
   $ openshift cli logs -f bc/openldap
+
+  # Start streaming the logs of the latest deployment of the mysql deployment config.
+  $ openshift cli logs -f dc/mysql
+
+  # Get the logs of the first deployment for the mysql deployment config. Note that logs
+  # from older deployments may not exist either because the deployment was successful
+  # or due to deployment pruning or manual deletion of the deployment.
+  $ openshift cli logs --version=1 dc/mysql
+
+  # Return a snapshot of ruby-container logs from pod backend.
+  $ openshift cli logs backend -c ruby-container
+
+  # Start streaming of ruby-container logs from pod backend.
+  $ openshift cli logs -f pod/backend -c ruby-container
 ----
 ====
 
@@ -499,7 +531,7 @@ Create a new application
   $ openshift cli new-app openshift/ruby-20-centos7~https://github.com/openshift/ruby-hello-world.git
 
   # Use the public Docker Hub MySQL image to create an app. Generated artifacts will be labeled with db=mysql
-  $ openshift cli new-app mysql -l db=mysql
+  $ openshift cli new-app mysql MYSQL_USER=user MYSQL_PASSWORD=pass MYSQL_DATABASE=testdb -l db=mysql
 
   # Use a MySQL image in a private registry to create an app and override application artifacts' names
   $ openshift cli new-app --docker-image=myregistry.com/mycompany/mysql --name=private
@@ -536,11 +568,13 @@ Create a new build configuration
 
 [options="nowrap"]
 ----
-  # Create a build config based on the source code in the current git repository (with a public remote) and a Docker image
+
+  # Create a build config based on the source code in the current git repository (with a public
+  # remote) and a Docker image
   $ openshift cli new-build . --docker-image=repo/langimage
 
   # Create a NodeJS build config based on the provided [image]~[source code] combination
-  $ openshift cli new-build openshift/nodejs-010-centos7~https://bitbucket.com/user/nodejs-app
+  $ openshift cli new-build openshift/nodejs-010-centos7~https://github.com/openshift/nodejs-ex.git
 
   # Create a build config from a remote repository using its beta2 branch
   $ openshift cli new-build https://github.com/openshift/ruby-hello-world#beta2
@@ -548,8 +582,8 @@ Create a new build configuration
   # Create a build config using a Dockerfile specified as an argument
   $ openshift cli new-build -D $'FROM centos:7\nRUN yum install -y httpd'
 
-  # Create a build config from a remote repository and add custom environment variables into resulting image
-  $ openshift cli new-build https://github.com/openshift/ruby-hello-world --env=RACK_ENV=development
+  # Create a build config from a remote repository and add custom environment variables
+  $ openshift cli new-build https://github.com/openshift/ruby-hello-world RACK_ENV=development
 ----
 ====
 
@@ -620,6 +654,9 @@ Process a template into list of resources
 
   # Convert stored template into resource list
   $ openshift cli process foo
+
+  # Convert template stored in different namespace into a resource list
+  $ openshift cli process openshift//foo
 
   # Convert template.json into resource list
   $ cat template.json | openshift cli process -f -
@@ -722,7 +759,7 @@ Start a shell session in a pod
 
 
 == oc rsync
-Copy local files to a pod
+Copy files between local filesystem and a pod
 
 ====
 
@@ -731,6 +768,9 @@ Copy local files to a pod
 
   # Synchronize a local directory with a pod directory
   $ openshift cli rsync ./local/dir/ POD:/remote/dir
+
+  # Synchronize a pod directory with a local directory
+  $ openshift cli rsync POD:/remote/dir/ ./local/dir
 ----
 ====
 
@@ -880,26 +920,31 @@ Create a new secret for SSH authentication
 
 
 == oc start-build
-Starts a new build
+Start a new build
 
 ====
 
 [options="nowrap"]
 ----
-  # Starts build from BuildConfig matching the name "3bd2ug53b"
-  $ openshift cli start-build sample-build
+  # Starts build from build config "hello-world"
+  $ openshift cli start-build hello-world
 
-  # Starts build from build matching the name "sample-build-1"
-  $ openshift cli start-build --from-build=sample-build-1
+  # Starts build from a previous build "hello-world-1"
+  $ openshift cli start-build --from-build=hello-world-1
 
-  # Starts build from BuildConfig matching the name "sample-build" and watches
-	# the logs until the build completes or fails
-  $ openshift cli start-build sample-build --follow
+  # Use the contents of a directory as build input
+  $ openshift cli start-build hello-world --from-dir=src/
 
-  # Starts build from BuildConfig matching the name "sample-build" and wait until
-	# the build completes. It exits with a non-zero return code if the build
-	# fails. 
-  $ openshift cli start-build sample-build --wait
+  # Send the contents of a Git repository to the server from tag 'v2'
+  $ openshift cli start-build hello-world --from-repo=../hello-world --commit=v2
+
+  # Start a new build for build config "hello-world" and watch the logs until the build
+  # completes or fails.
+  $ openshift cli start-build hello-world --follow
+
+  # Start a new build for build config "hello-world" and wait until the build completes. It
+  # exits with a non-zero return code if the build fails.
+  $ openshift cli start-build hello-world --wait
 ----
 ====
 
@@ -946,14 +991,17 @@ Tag existing images into image streams
 
 [options="nowrap"]
 ----
-  # Tag the current image for the image stream 'openshift/ruby' and tag '2.0' into the image stream 'yourproject/ruby with tag 'tip':
+  # Tag the current image for the image stream 'openshift/ruby' and tag '2.0' into the image stream 'yourproject/ruby with tag 'tip'.
   $ openshift cli tag openshift/ruby:2.0 yourproject/ruby:tip
 
-  # Tag a specific image:
+  # Tag a specific image.
   $ openshift cli tag openshift/ruby@sha256:6b646fa6bf5e5e4c7fa41056c27910e679c03ebe7f93e361e6515a9da7e258cc yourproject/ruby:tip
 
-  # Tag an external Docker image:
+  # Tag an external Docker image.
   $ openshift cli tag --source=docker openshift/origin:latest yourproject/ruby:tip
+
+  # Remove the specified spec tag from an image stream.
+  $ openshift cli tag openshift/origin:latest -d
 ----
 ====
 

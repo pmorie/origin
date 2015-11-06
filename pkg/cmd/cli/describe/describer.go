@@ -16,12 +16,12 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kctl "k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
@@ -37,7 +37,6 @@ func describerMap(c *client.Client, kclient kclient.Interface, host string) map[
 	m := map[string]kctl.Describer{
 		"Build":                &BuildDescriber{c, kclient},
 		"BuildConfig":          &BuildConfigDescriber{c, host},
-		"BuildLog":             &BuildLogDescriber{c},
 		"DeploymentConfig":     NewDeploymentConfigDescriber(c, kclient),
 		"Identity":             &IdentityDescriber{c},
 		"Image":                &ImageDescriber{c},
@@ -149,7 +148,7 @@ func (d *BuildDescriber) Describe(namespace, name string) (string, error) {
 }
 
 func describeBuildDuration(build *buildapi.Build) string {
-	t := util.Now().Rfc3339Copy()
+	t := unversioned.Now().Rfc3339Copy()
 	if build.Status.StartTimestamp == nil &&
 		build.Status.CompletionTimestamp != nil &&
 		(build.Status.Phase == buildapi.BuildPhaseCancelled ||
@@ -216,6 +215,13 @@ func describeBuildSpec(p buildapi.BuildSpec, out *tabwriter.Writer) {
 				formatString(out, "Committer", rev.Committer.Name)
 			}
 			formatString(out, "Message", rev.Message)
+		}
+	}
+	if p.Source.Binary != nil {
+		if len(p.Source.Binary.AsFile) > 0 {
+			formatString(out, "Binary", fmt.Sprintf("provided as file %q on build", p.Source.Binary.AsFile))
+		} else {
+			formatString(out, "Binary", "provided on build")
 		}
 	}
 
@@ -371,7 +377,7 @@ func (d *BuildConfigDescriber) Describe(namespace, name string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	buildList, err := d.Builds(namespace).List(labels.SelectorFromSet(labels.Set{buildapi.BuildConfigLabel: name}), fields.Everything())
+	buildList, err := d.Builds(namespace).List(labels.SelectorFromSet(labels.Set{buildapi.DeprecatedBuildConfigLabel: name}), fields.Everything())
 	if err != nil {
 		return "", err
 	}
@@ -406,16 +412,6 @@ func (d *BuildConfigDescriber) Describe(namespace, name string) (string, error) 
 		}
 		return nil
 	})
-}
-
-// BuildLogDescriber generates information about a BuildLog
-type BuildLogDescriber struct {
-	client.Interface
-}
-
-// Describe returns the description of a buildLog
-func (d *BuildLogDescriber) Describe(namespace, name string) (string, error) {
-	return fmt.Sprintf("Name: %s/%s, Labels:", namespace, name), nil
 }
 
 // ImageDescriber generates information about a Image
@@ -573,10 +569,13 @@ func (d *RouteDescriber) Describe(namespace, name string) (string, error) {
 		formatString(out, "Service", route.Spec.To.Name)
 
 		tlsTerm := ""
+		insecurePolicy := ""
 		if route.Spec.TLS != nil {
 			tlsTerm = string(route.Spec.TLS.Termination)
+			insecurePolicy = string(route.Spec.TLS.InsecureEdgeTerminationPolicy)
 		}
 		formatString(out, "TLS Termination", tlsTerm)
+		formatString(out, "Insecure Policy", insecurePolicy)
 		return nil
 	})
 }
@@ -595,12 +594,12 @@ func (d *ProjectDescriber) Describe(namespace, name string) (string, error) {
 		return "", err
 	}
 	resourceQuotasClient := d.kubeClient.ResourceQuotas(name)
-	resourceQuotaList, err := resourceQuotasClient.List(labels.Everything())
+	resourceQuotaList, err := resourceQuotasClient.List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return "", err
 	}
 	limitRangesClient := d.kubeClient.LimitRanges(name)
-	limitRangeList, err := limitRangesClient.List(labels.Everything())
+	limitRangeList, err := limitRangesClient.List(labels.Everything(), fields.Everything())
 	if err != nil {
 		return "", err
 	}

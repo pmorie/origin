@@ -129,8 +129,7 @@ func TestRegistryClientQuayIOImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = conn.ImageByTag("coreos", "etcd", "latest")
-	if err != nil {
+	if _, err := conn.ImageByTag("coreos", "etcd", "latest"); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

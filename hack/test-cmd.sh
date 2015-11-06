@@ -22,7 +22,7 @@ function cleanup()
     if [ $out -ne 0 ]; then
         echo "[FAIL] !!!!! Test Failed !!!!"
         echo
-        cat "${LOG_DIR}/openshift.log"
+        tail -40 "${LOG_DIR}/openshift.log"
         echo
         echo -------------------------------------
         echo
@@ -31,7 +31,7 @@ function cleanup()
           echo
           echo "pprof: top output"
           echo
-          go tool pprof -text ./_output/local/bin/$(os::util::host_platform)/openshift cpu.pprof
+          go tool pprof -text ./_output/local/bin/$(os::util::host_platform)/openshift cpu.pprof | head -120
         fi
 
         echo
@@ -134,11 +134,11 @@ openshift start \
 [ "$(openshift ex validate node-config ${NODE_CONFIG_DIR}/node-config.yaml 2>&1 | grep SUCCESS)" ]
 # breaking the config fails the validation check
 cp ${MASTER_CONFIG_DIR}/master-config.yaml ${BASETMPDIR}/master-config-broken.yaml
-sed -i '5,10d' ${BASETMPDIR}/master-config-broken.yaml
-[ "$(openshift ex validate master-config ${BASETMPDIR}/master-config-broken.yaml 2>&1 | grep error)" ]
+os::util::sed '5,10d' ${BASETMPDIR}/master-config-broken.yaml
+[ "$(openshift ex validate master-config ${BASETMPDIR}/master-config-broken.yaml 2>&1 | grep ERROR)" ]
 
 cp ${NODE_CONFIG_DIR}/node-config.yaml ${BASETMPDIR}/node-config-broken.yaml
-sed -i '5,10d' ${BASETMPDIR}/node-config-broken.yaml
+os::util::sed '5,10d' ${BASETMPDIR}/node-config-broken.yaml
 [ "$(openshift ex validate node-config ${BASETMPDIR}/node-config-broken.yaml 2>&1 | grep ERROR)" ]
 echo "validation: ok"
 
@@ -150,7 +150,7 @@ os::util::sed "s/:7001$/:${ETCD_PEER_PORT}/g" ${SERVER_CONFIG_DIR}/master/master
 OPENSHIFT_ON_PANIC=crash openshift start master \
   --config=${MASTER_CONFIG_DIR}/master-config.yaml \
   --loglevel=4 \
-  1>&2 2>"${LOG_DIR}/openshift.log" &
+  &>"${LOG_DIR}/openshift.log" &
 OS_PID=$!
 
 if [[ "${API_SCHEME}" == "https" ]]; then
@@ -205,8 +205,8 @@ fi
 # must only accept one arg (server)
 [ "$(oc login https://server1 https://server2.com 2>&1 | grep 'Only the server URL may be specified')" ]
 # logs in with a valid certificate authority
-oc login ${KUBERNETES_MASTER} --certificate-authority="${MASTER_CONFIG_DIR}/ca.crt" -u test-user -p anything --api-version=v1beta3
-grep -q "v1beta3" ${HOME}/.kube/config
+oc login ${KUBERNETES_MASTER} --certificate-authority="${MASTER_CONFIG_DIR}/ca.crt" -u test-user -p anything --api-version=v1
+grep -q "v1" ${HOME}/.kube/config
 oc logout
 # logs in skipping certificate check
 oc login ${KUBERNETES_MASTER} --insecure-skip-tls-verify -u test-user -p anything
@@ -240,6 +240,7 @@ oc get projects
 oc project project-foo
 [ "$(oc config view | grep current-context | grep project-foo/${API_HOST}:${API_PORT}/test-user)" ]
 [ "$(oc whoami | grep 'test-user')" ]
+[ "$(oc whoami --config="${MASTER_CONFIG_DIR}/admin.kubeconfig" | grep 'system:admin')" ]
 [ -n "$(oc whoami -t)" ]
 [ -n "$(oc whoami -c)" ]
 
@@ -273,6 +274,7 @@ for test in "${tests[@]}"; do
   oc project ${CLUSTER_ADMIN_CONTEXT}
   oc new-project "cmd-${name}"
   ${test}
+  oc project ${CLUSTER_ADMIN_CONTEXT}
   oc delete project "cmd-${name}"
 done
 

@@ -212,6 +212,11 @@ currently part of the Godeps.json file.  Example:
 
     $ UPSTREAM_REPO=github.com/coreos/etcd UPSTREAM_PACKAGE=store hack/cherry-pick.sh <pr_number>
 
+By default `hack/cherry-pick.sh` uses git remote named `origin` to fetch kubernetes repository,
+if your git configuration is different, you can pass the git remote name by setting `UPSTREAM_REMOTE` env var:
+
+    $ UPSTREAM_REMOTE=upstream hack/cherry-pick.sh <pr_number>
+
 ## Moving a commit you developed in Origin to an upstream
 
 The `hack/move-upstream.sh` script takes the current feature branch, finds any changes to the
@@ -347,7 +352,7 @@ refactorings, architectural changes or behavior changes introduced in Kubernetes
 1. `make clean ; hack/build-go.sh` compiles without errors and the standalone server starts correctly.
 1. all of our generated code is up to date by running all `hack/update-*` scripts.
 1. `hack/verify-open-ports.sh` runs without errors.
-1. `hack/copy-kube-artifacts.sh` so Kubernetes tests can be fully functional. The diff resulting from this script should be squashed into the Kube bump commit. 
+1. `hack/copy-kube-artifacts.sh` so Kubernetes tests can be fully functional. The diff resulting from this script should be squashed into the Kube bump commit.
 2. `TEST_KUBE=1 hack/test-go.sh` runs without errors.
 3. `hack/test-cmd.sh` runs without errors.
 3. `hack/test-integration.sh` runs without errors.
@@ -421,9 +426,15 @@ In order to start the server in CPU profiling mode, run:
 
     $ OPENSHIFT_PROFILE=cpu sudo ./_output/local/bin/linux/amd64/openshift start
 
-To view profiles, you use [pprof] which is part of `go tool`.  You must pass the binary you are debugging (for symbols) and a captured pprof.  For instance, to view a `cpu` profile from above, you would run OpenShift to completion, and then run:
+Or, if running OpenShift under systemd, append this to /etc/sysconfig/openshift-master
+
+    OPENSHIFT_PROFILE=cpu
+
+To view profiles, you use [pprof](http://goog-perftools.sourceforge.net/doc/cpu_profiler.html) which is part of `go tool`.  You must pass the binary you are debugging (for symbols) and a captured pprof.  For instance, to view a `cpu` profile from above, you would run OpenShift to completion, and then run:
 
     $ go tool pprof ./_output/local/bin/linux/amd64/openshift cpu.pprof
+    or
+    $ go tool pprof /bin/openshift /var/lib/openshift/cpu.pprof
 
 This will open the `pprof` shell, and you can then run:
 

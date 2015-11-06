@@ -90,6 +90,7 @@ angular.module('openshiftConsole')
     };
 
     $scope.createFromTemplate = function() {
+      $scope.disableInputs = true;
       DataService.create("processedtemplates", null, $scope.template, $scope).then(
         function(config) { // success
           var titles = {
@@ -138,6 +139,7 @@ angular.module('openshiftConsole')
           Navigate.toNextSteps($routeParams.name, $scope.projectName);
         },
         function(result) { // failure
+          $scope.disableInputs = false;
           var details;
           if (result.data && result.data.message) {
             details = result.data.message;
@@ -169,7 +171,7 @@ angular.module('openshiftConsole')
       $scope.projectPromise.resolve(project);
     });
 
-    DataService.get("templates", name, $scope, {namespace: namespace}).then(
+    DataService.get("templates", name, {namespace: (namespace || $scope.projectName)}).then(
       function(template) {
         $scope.template = template;
         $scope.templateImages = imageItems(template);

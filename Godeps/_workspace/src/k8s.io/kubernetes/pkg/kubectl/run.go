@@ -24,7 +24,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/validation"
 )
 
 type BasicReplicationController struct{}
@@ -267,6 +267,7 @@ func (BasicPod) ParamNames() []GeneratorParam {
 		{"port", false},
 		{"hostport", false},
 		{"stdin", false},
+		{"leave-stdin-open", false},
 		{"tty", false},
 		{"restart", false},
 		{"command", false},
@@ -333,6 +334,10 @@ func (BasicPod) Generate(genericParams map[string]interface{}) (runtime.Object, 
 	if err != nil {
 		return nil, err
 	}
+	leaveStdinOpen, err := GetBool(params, "leave-stdin-open", false)
+	if err != nil {
+		return nil, err
+	}
 
 	tty, err := GetBool(params, "tty", false)
 	if err != nil {
@@ -360,6 +365,7 @@ func (BasicPod) Generate(genericParams map[string]interface{}) (runtime.Object, 
 					Image:           params["image"],
 					ImagePullPolicy: api.PullIfNotPresent,
 					Stdin:           stdin,
+					StdinOnce:       !leaveStdinOpen && stdin,
 					TTY:             tty,
 					Resources:       resourceRequirements,
 				},
@@ -394,7 +400,7 @@ func parseEnvs(envArray []string) ([]api.EnvVar, error) {
 	envs := []api.EnvVar{}
 	for _, env := range envArray {
 		parts := strings.Split(env, "=")
-		if len(parts) != 2 || !util.IsCIdentifier(parts[0]) || len(parts[1]) == 0 {
+		if len(parts) != 2 || !validation.IsCIdentifier(parts[0]) || len(parts[1]) == 0 {
 			return nil, fmt.Errorf("invalid env: %v", env)
 		}
 		envVar := api.EnvVar{Name: parts[0], Value: parts[1]}
