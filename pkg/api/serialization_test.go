@@ -12,6 +12,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	apitesting "k8s.io/kubernetes/pkg/api/testing"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -459,4 +460,41 @@ func TestTypes(t *testing.T) {
 			roundTrip(t, v1.Codec, item)
 		}
 	}
+}
+
+func TestTemplate(t *testing.T) {
+
+	api.Scheme.Log(t)
+	defer api.Scheme.Log(nil)
+
+	kind := "Template"
+	item, err := api.Scheme.New("", kind)
+	if err != nil {
+		t.Errorf("Couldn't make a %v? %v", kind, err)
+		return
+	}
+	seed := int64(2703387474910584091) //rand.Int63()
+	fuzzInternalObject(t, "", item, seed)
+
+	uid := int64(100030003)
+	item.(*template.Template).Objects = []runtime.Object{
+		&api.Pod{
+			TypeMeta: unversioned.TypeMeta{
+				Kind:       "Pod",
+				APIVersion: "v1",
+			},
+			ObjectMeta: api.ObjectMeta{
+				Name: "test-pod",
+			},
+			Spec: api.PodSpec{
+				SecurityContext: &api.PodSecurityContext{
+					RunAsUser: &uid,
+				},
+			},
+		},
+	}
+	item.(*template.Template).Kind = "Template"
+	item.(*template.Template).APIVersion = "v1"
+	roundTrip(t, osapi.Codec, item)
+	roundTrip(t, v1.Codec, item)
 }
