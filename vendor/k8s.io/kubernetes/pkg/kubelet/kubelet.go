@@ -1844,6 +1844,9 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 	podStatus := o.podStatus
 	updateType := o.updateType
 
+	start := time.Now()
+	glog.Infof("calling syncPod for %v/%v", pod.Namespace, pod.Name)
+
 	// if we want to kill a pod, do it now!
 	if updateType == kubetypes.SyncPodKill {
 		killPodOptions := o.killPodOptions
@@ -1938,6 +1941,7 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 	}
 
 	// Wait for volumes to attach/mount
+	ts := time.Now()
 	if err := kl.volumeManager.WaitForAttachAndMount(pod); err != nil {
 		ref, errGetRef := api.GetReference(pod)
 		if errGetRef == nil && ref != nil {
@@ -1946,6 +1950,7 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 			return err
 		}
 	}
+	glog.Infof("LATENCY waitForAttachAndMount for %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
 	// Fetch the pull secrets for the pod
 	pullSecrets, err := kl.getPullSecretsForPod(pod)
@@ -1955,11 +1960,13 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 	}
 
 	// Call the container runtime's SyncPod callback
+	ts = time.Now()
 	result := kl.containerRuntime.SyncPod(pod, apiPodStatus, podStatus, pullSecrets, kl.backOff)
 	kl.reasonCache.Update(pod.UID, result)
 	if err = result.Error(); err != nil {
 		return err
 	}
+	glog.Infof("LATENCY container runtime syncPod for %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
 	// early successful exit if pod is not bandwidth-constrained
 	if !kl.shapingEnabled() {
@@ -1982,6 +1989,7 @@ func (kl *Kubelet) syncPod(o syncPodOptions) error {
 			kl.recorder.Event(pod, api.EventTypeWarning, kubecontainer.UndefinedShaper, "Pod requests bandwidth shaping, but the shaper is undefined")
 		}
 	}
+	glog.Infof("LATENCY kubelet syncPod for %v/%v in %v", pod.Namespace, pod.Name, time.Since(start))
 
 	return nil
 }

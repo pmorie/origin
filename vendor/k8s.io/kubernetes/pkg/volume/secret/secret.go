@@ -18,6 +18,7 @@ package secret
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -165,11 +166,14 @@ func (b *secretVolumeMounter) SetUpAt(dir string, fsGroup *int64) error {
 		return fmt.Errorf("Cannot setup secret volume %v because kube client is not configured", b.volName)
 	}
 
+	glog.Infof("LATENCY getting secret %v/%v", b.pod.Namespace, b.source.SecretName)
+	ts := time.Now()
 	secret, err := kubeClient.Core().Secrets(b.pod.Namespace).Get(b.source.SecretName)
 	if err != nil {
 		glog.Errorf("Couldn't get secret %v/%v", b.pod.Namespace, b.source.SecretName)
 		return err
 	}
+	glog.Infof("LATENCY got secret %v/%v in %v seconds", b.pod.Namespace, b.source.SecretName, time.Since(ts).Seconds())
 
 	totalBytes := totalSecretBytes(secret)
 	glog.V(3).Infof("Received secret %v/%v containing (%v) pieces of data, %v total bytes",

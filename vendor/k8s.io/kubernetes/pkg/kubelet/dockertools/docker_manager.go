@@ -552,7 +552,7 @@ func (dm *DockerManager) runContainer(
 	pidMode string,
 	restartCount int,
 	oomScoreAdj int) (kubecontainer.ContainerID, error) {
-
+	start := time.Now()
 	dockerName := KubeletContainerName{
 		PodFullName:   kubecontainer.GetPodFullName(pod),
 		PodUID:        pod.UID,
@@ -709,6 +709,7 @@ func (dm *DockerManager) runContainer(
 		return kubecontainer.ContainerID{}, err
 	}
 	dm.recorder.Eventf(ref, api.EventTypeNormal, kubecontainer.StartedContainer, "Started container with docker id %v", utilstrings.ShortenString(createResp.ID, 12))
+	glog.Infof("LATENCY runContainer for %v/%v/%v in %v", pod.Namespace, pod.Name, container.Name, time.Since(start))
 
 	return kubecontainer.DockerID(createResp.ID).ContainerID(), nil
 }
@@ -1877,13 +1878,16 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 		metrics.ContainerManagerLatency.WithLabelValues("SyncPod").Observe(metrics.SinceInMicroseconds(start))
 	}()
 
+	ts := time.Now()
 	containerChanges, err := dm.computePodContainerChanges(pod, podStatus)
 	if err != nil {
 		result.Fail(err)
 		return
 	}
 	glog.V(3).Infof("Got container changes for pod %q: %+v", format.Pod(pod), containerChanges)
+	glog.Infof("LATENCY Calculated container changes for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
+	ts = time.Now()
 	if containerChanges.InfraChanged {
 		ref, err := api.GetReference(pod)
 		if err != nil {
@@ -1933,9 +1937,12 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 			}
 		}
 	}
+	glog.Infof("LATENCY Handled container killing for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
+	ts = time.Now()
 	// Keep terminated init containers fairly aggressively controlled
 	dm.pruneInitContainersBeforeStart(pod, podStatus, containerChanges.InitContainersToKeep)
+	glog.Infof("LATENCY Pruned init containers for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
 	// We pass the value of the podIP down to runContainerInPod, which in turn
 	// passes it to various other functions, in order to facilitate
@@ -1953,6 +1960,7 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 	// If we should create infra container then we do it first.
 	podInfraContainerID := containerChanges.InfraContainerId
 	if containerChanges.StartInfraContainer && (len(containerChanges.ContainersToStart) > 0) {
+		ts = time.Now()
 		glog.V(4).Infof("Creating pod infra container for %q", format.Pod(pod))
 		startContainerResult := kubecontainer.NewSyncResult(kubecontainer.StartContainer, PodInfraContainerName)
 		result.AddSyncResult(startContainerResult)
@@ -2005,8 +2013,10 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 			podIP = dm.determineContainerIP(pod.Namespace, pod.Name, podInfraContainer)
 			glog.V(4).Infof("Determined pod ip after infra change: %q: %q", format.Pod(pod), podIP)
 		}
+		glog.Infof("LATENCY Handled starting infra container for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 	}
 
+	ts = time.Now()
 	next, status, done := findActiveInitContainer(pod, podStatus)
 	if status != nil {
 		if status.ExitCode != 0 {
@@ -2021,6 +2031,7 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 			utilruntime.HandleError(fmt.Errorf("Error running pod %q init container %q, restarting: %+v", format.Pod(pod), status.Name, status))
 		}
 	}
+	glog.Infof("LATENCY Handled checking init container status for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
 	// Note: when configuring the pod's containers anything that can be configured by pointing
 	// to the namespace of the infra container should use namespaceMode.  This includes things like the net namespace
@@ -2029,6 +2040,7 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 	namespaceMode := fmt.Sprintf("container:%v", podInfraContainerID)
 	pidMode := getPidMode(pod)
 
+	ts = time.Now()
 	if next != nil {
 		if len(containerChanges.ContainersToStart) == 0 {
 			glog.V(4).Infof("No containers to start, stopping at init container %+v in pod %v", next.Name, format.Pod(pod))
@@ -2071,8 +2083,10 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 		glog.V(4).Infof("Not all init containers have succeeded for pod %v", format.Pod(pod))
 		return
 	}
+	glog.Infof("LATENCY Handled starting next init container for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
 
 	// Start regular containers
+	ts = time.Now()
 	for idx := range containerChanges.ContainersToStart {
 		container := &pod.Spec.Containers[idx]
 		startContainerResult := kubecontainer.NewSyncResult(kubecontainer.StartContainer, container.Name)
@@ -2089,12 +2103,16 @@ func (dm *DockerManager) SyncPod(pod *api.Pod, _ api.PodStatus, podStatus *kubec
 		}
 
 		glog.V(4).Infof("Creating container %+v in pod %v", container, format.Pod(pod))
+		sts := time.Now()
 		if err, msg := dm.tryContainerStart(container, pod, podStatus, pullSecrets, namespaceMode, pidMode, podIP); err != nil {
 			startContainerResult.Fail(err, msg)
 			utilruntime.HandleError(fmt.Errorf("container start failed: %v: %s", err, msg))
 			continue
 		}
+		glog.Infof("LATENCY tried container start for %v/%v/%v in %v", pod.Namespace, pod.Name, container.Name, time.Since(sts))
 	}
+	glog.Infof("LATENCY Handled starting regular containers for pod %v/%v in %v", pod.Namespace, pod.Name, time.Since(ts))
+
 	return
 }
 
