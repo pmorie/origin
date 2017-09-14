@@ -26,3 +26,5 @@ origin.iml
 *.go~
 tags
 .envrc
+localup
+localdown
