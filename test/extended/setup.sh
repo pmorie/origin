@@ -2,6 +2,74 @@
 #
 # This abstracts starting up an extended server.
 
+# Builds the service-catalog e2es.
+function os::test::extended::service-catalog::setup() {	
+	# TODO: where does this test binary get built?
+	os::util::ensure::built_binary_exists 'service-catalog-e2e.test' 'cmd/service-catalog/go/src/github.com/kubernetes-incubator/service-catalog/test/e2e'
+}
+
+# Runs the service catalog e2es with a focus.
+function os::test::extended::service-catalog::focus() {
+	if [[ -n "${SC_FOCUS:-}" ]]; then
+		# first run anything that isn't explicitly declared [Serial], and matches the $SC_FOCUS, in a parallel mode.
+		os::log::info "Running parallel tests N=${PARALLEL_NODES:-<default>} with focus ${SC_FOCUS}"
+		os::test::extended::service-catalog::run -- -ginkgo.skip "\[Serial\]" -test.timeout 6h ${TEST_EXTENDED_SC_ARGS-} || exitstatus=$?
+	fi
+}
+
+# Run extended tests or print out a list of tests that need to be run
+# Input:
+# - SC_FOCUS - the extended test focus
+# - SC_SKIP - the tests to skip
+# - SC_TEST_EXTENDED_SKIP - a global filter that allows additional tests to be omitted, will
+#     be joined with SC_SKIP
+# - SC_SHOW_ALL - if set, then only print out tests to be run
+# - SC_TEST_PARALLEL - if set, run the tests in parallel with the specified number of nodes
+# - Arguments - arguments to pass to ginkgo
+function os::test::extended::service-catalog::run () {
+	local listArgs=()
+	local runArgs=()
+
+	if [[ -n "${SC_FOCUS-}" ]]; then
+		listArgs+=("--ginkgo.focus=${SC_FOCUS}")
+		runArgs+=("-focus=${SC_FOCUS}")
+	fi
+
+	local skip="${SC_SKIP-}"
+	# Allow additional skips to be provided on the command line
+	if [[ -n "${SC_TEST_EXTENDED_SKIP-}" ]]; then
+		if [[ -n "${skip}" ]]; then
+			skip="${skip}|${SC_TEST_EXTENDED_SKIP}"
+		else
+			skip="${SC_TEST_EXTENDED_SKIP}"
+		fi
+	fi
+	if [[ -n "${skip}" ]]; then
+		listArgs+=("--ginkgo.skip=${skip}")
+		runArgs+=("-skip=${skip}")
+	fi
+
+	if [[ -n "${SC_TEST_PARALLEL-}" ]]; then
+		runArgs+=("-p" "-nodes=${SC_TEST_PARALLEL}")
+	fi
+
+	if [[ -n "${SHOW_ALL-}" ]]; then
+		PRINT_TESTS=1
+		os::test::extended::test_list "${listArgs[@]:+"${listArgs[@]}"}" # "
+		return
+	fi
+
+	os::test::extended::service-catalog::test_list "${listArgs[@]:+"${listArgs[@]}"}" # "
+
+	if [[ "${TEST_COUNT}" -eq 0 ]]; then
+		os::log::warning "No tests were selected"
+		return
+	fi
+
+	ginkgo -v -noColor "${runArgs[@]:+"${runArgs[@]}"}" "$( os::util::find::built_binary extended.test )" "$@" # "
+}
+
+
 # If invoked with arguments, executes the test directly.
 function os::test::extended::focus () {
 	if [[ "$@[@]" =~ "ginkgo.focus" ]]; then
@@ -67,6 +135,8 @@ function os::test::extended::setup () {
 		os::log::info "Running tests against existing cluster..."
 		return 0
 	fi
+
+	# TODO: install service-catalog into cluster
 
 	os::util::ensure::built_binary_exists 'openshift'
 
@@ -254,3 +324,4 @@ function os::test::extended::merge_junit () {
 	mv "${output}" "${TEST_REPORT_DIR}/junit.xml"
 }
 readonly -f os::test::extended::merge_junit
+

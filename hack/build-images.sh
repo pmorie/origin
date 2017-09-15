@@ -77,4 +77,6 @@ for i in `jobs -p`; do wait $i; done
 # extra images (not part of infrastructure)
 ( os::build::image "openshift/hello-openshift"           examples/hello-openshift ) &
 
+# the service-catalog user-broker image is currently built out of band
+
 for i in `jobs -p`; do wait $i; done
